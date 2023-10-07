@@ -117,6 +117,15 @@ public:
 	}
 	void start();
 	void stop();
+	
+	Serial_Port *dest_port;
+	int protocol_mode; // 0：telecontrol 1: telemetry
+	int read_port();
+	int write_port (char *buf, unsigned len);
+	int read_start();
+	int write_start();
+	char send_buff[256];
+	unsigned send_len;
 
 private:
 
@@ -139,6 +148,8 @@ private:
 };
 
 
+void *serial_read(void *args);
+void *serial_write(void *args);
 
 #endif // SERIAL_PORT_H_
 

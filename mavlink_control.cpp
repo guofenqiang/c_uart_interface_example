@@ -444,6 +444,37 @@ quit_handler( int sig )
 }
 
 
+int top1(int argc, char **argv)
+{
+	Serial_Port *port1;
+	Serial_Port *port2;
+
+	char uart_name1[] = "/dev/ttyS0"; //protocol <---> bz
+	int baudrate1 = 57600;
+
+	char uart_name2[] = "/dev/ttyS6"; //protocol <---> uav
+	int baudrate2 = 57600;
+
+	port1 = new Serial_Port(uart_name1, baudrate1); //protocol <---> bz
+	port2 = new Serial_Port(uart_name2, baudrate2); //protocol <---> uav
+	port1->start();
+	port2->start();
+
+	port1->dest_port = port2;
+	port2->dest_port = port1;
+	port1->protocol_mode = 0; //telecontrol: ground->uav
+	port2->protocol_mode = 1; //telemetry:uav->ground
+
+	port1->read_start();
+	port2->read_start();
+	port2->write_start();
+	// udp_recv_init();
+	while (1);
+
+	return 0;
+}
+
+
 // ------------------------------------------------------------------------------
 //   Main
 // ------------------------------------------------------------------------------
@@ -453,7 +484,7 @@ main(int argc, char **argv)
 	// This program uses throw, wrap one big try/catch here
 	try
 	{
-		int result = top(argc,argv);
+		int result = top1(argc,argv);
 		return result;
 	}
 
