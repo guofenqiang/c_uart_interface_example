@@ -45,6 +45,8 @@ void ProtocolConversion::bz_telecontrol_decode(char *buff, int len)
         default :
             invalid_teleconrol_cmd(bz_message);
             break; 
+        
+        command_feedback_response(bz_message);
     }
 
     // port->dest_port->write_port(buff, len);
@@ -56,9 +58,9 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
     mavlink_heartbeat_t heartbeat;
     mavlink_attitude_t attitude;
 
-    bz_message_ground_down_t bz_message;
+    bz_message_ground_down_t bz_message = {0};
 
-    drone_platform_status_feedback_data_t feedback_data = {};
+    drone_platform_status_feedback_data_t feedback_data = {0};
 
     // Handle Message ID
     switch (message.msgid)
@@ -77,13 +79,29 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             uint8_t receiver_sysid = 10;
 
             mavlink_msg_attitude_decode(&message, &attitude);
-            feedback_data.roll_angle = attitude.roll;
-            feedback_data.pitch_angle = attitude.pitch;
-            feedback_data.yaw_angle = attitude.yaw;
+            feedback_data.roll_angle = attitude.roll * 57.3 * 100;
+            feedback_data.pitch_angle = attitude.pitch * 57.3 * 100;
+            if (attitude.yaw >= 0) {
+                feedback_data.yaw_angle = attitude.yaw * 57.3 * 10;
+            } else {
+                feedback_data.yaw_angle = (360 + attitude.yaw * 57.3) * 10;
+            }
+
             feedback_data.platform_status = cov_flight_status(flightMode(_base_mode, _custom_mode));
             uav_platform_feedback(&bz_message, sender_sysid, receiver_sysid, feedback_data);
             ground_down_t_to_qbyte(port->send_buff, &port->send_len, &bz_message);
+
+            // printf("roll: %f, pitch: %f, yaw: %f, roll1: %d, pitch1: %d, yaw1: %d\n", 
+            // attitude.roll, attitude.pitch, attitude.yaw, feedback_data.roll_angle, feedback_data.pitch_angle, feedback_data.yaw_angle);
         }
+
+        // case MAVLINK_MSG_ID_ALTITUDE:
+        // {
+        //     mavlink_altitude_t altitude;
+        //     mavlink_msg_altitude_decode(&message, &altitude);
+
+        //     feedback_data.relative_height = (int16_t)altitude.altitude_relative * 10;
+        // }
 
         default :
         {
@@ -115,7 +133,7 @@ void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_m
 
     uint8_t     base_mode;
     uint32_t    custom_mode;
-    string flight_mode = "Position";
+    string flight_mode = "Stabilized";
 
     if (setFlightMode(flight_mode, &base_mode, &custom_mode)) {
         uint8_t newBaseMode = _base_mode & ~MAV_MODE_FLAG_DECODE_POSITION_CUSTOM_MODE;
@@ -131,9 +149,18 @@ void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_m
                                     newBaseMode,
                                     custom_mode);
         port->dest_port->write_message(message);
+        printf("newBaseMode: 0x%02x\n", newBaseMode);
+        printf("custom_mode: 0x%08x\n", custom_mode);
+        print_mavlink(message);
     } else {
         cout << "FirmwarePlugin::setFlightMode failed, flightMode:" << flight_mode << endl;
     }
+}
+
+void ProtocolConversion::command_feedback_response(bz_message_uav_up_t bz_message)
+{
+    command_feedback_response_t command_feedback_response;
+    
 }
 
 void ProtocolConversion::invalid_teleconrol_cmd(bz_message_uav_up_t bz_message)
@@ -177,23 +204,23 @@ void ProtocolConversion::init_px4()
     // Must be in same order as above structure
     const char * rgModeNames[] = {
         "Manual",
-        "Acro",
         "Stabilized",
+        "Acro",
         "Rattitude",
         "Altitude",
-        "Position",
         "Offboard",
-        "Ready",
-        "Takeoff",
+        "Simple",
+        "Position",
+        "Orbit",
         "Hold",
         "Mission",
         "Return",
+        "Follow Me",
         "Land",
         "Precision Land",
+        "Ready",
         "Return to Groundstation",
-        "Follow Me",
-        "Simple",
-        "Orbit",
+        "Takeoff",
     };
 
     // Convert static information to dynamic list. This allows for plugin override class to manipulate list.
@@ -291,14 +318,14 @@ uint8_t ProtocolConversion::cov_flight_status(string flightMode)
         flight_mode = VIRTUAL_JOYSTICK_FLIGHT;
     } else if (flightMode == "") {
         flight_mode = AUTO_RETURN;
-    }else if (flightMode == "Position") {
+    }else if (flightMode == "Position" || flightMode == "Stabilized") {
         flight_mode = AUTO_MAUAL_FLIGHT;
     } else if (flightMode == "") {
         flight_mode = EMERENCY_MODE;
     } else if (flightMode == "") {
         flight_mode = STOP_SLURRY;
     } else {
-        cout << "unkown flight mode " << flightMode << endl;
+        // cout << "unkown flight mode " << flightMode << endl;
         flight_mode = 0xff;
     }
     return flight_mode;
@@ -340,4 +367,17 @@ void ProtocolConversion::ground_down_t_to_qbyte(char *buff, unsigned *len, bz_me
 
     memcpy(buff, (char*)&msg->frame_header1, BZ_GROUND_DOWNSTREAM_LEN);
     *len = BZ_GROUND_DOWNSTREAM_LEN;
+}
+
+void ProtocolConversion::print_mavlink(mavlink_message_t message)
+{
+    printf("message.magic: 0x%02x\n", message.magic);
+    printf("message.len: 0x%02x\n", message.len);
+    printf("message.magic: 0x%02x\n", message.incompat_flags);
+    printf("message.incompat_flags: 0x%02x\n", message.compat_flags);
+    printf("message.seq: 0x%02x\n", message.seq);
+    printf("message.sysid: 0x%02x\n", message.sysid);
+    printf("message.compid: 0x%02x\n", message.compid);
+    printf("message.msgid: %d\n", message.msgid);
+    printf("message.checksum: 0x%04x\n", message.checksum);
 }

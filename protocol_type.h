@@ -227,6 +227,14 @@ typedef struct __drone_platform_status_feedback_data {
     uint8_t	flight_confirmation;
 } drone_platform_status_feedback_data_t;
 
+typedef struct __command_feedback_response {
+    uint8_t reciver_status;
+    uint16_t cmd_id;
+    uint8_t sender_sysid;
+    uint8_t reciver_sysid;
+    uint16_t reciver_time;
+    uint8_t cmd_status;
+} command_feedback_response_t;
 
 #pragma pack(pop)
 

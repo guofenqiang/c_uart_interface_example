@@ -469,6 +469,8 @@ int top1(int argc, char **argv)
 	port2->read_start();
 	port2->write_start();
 	// udp_recv_init();
+	Sender sender(port2);
+	sender.udp_send_init();
 	while (1);
 
 	return 0;

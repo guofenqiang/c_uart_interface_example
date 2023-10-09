@@ -201,6 +201,12 @@ write_message(const mavlink_message_t &message)
 	// Write buffer to serial port, locks port while writing
 	int bytesWritten = _write_port(buf,len);
 
+	for (int i = 0; i < len; i++) 
+	{
+		printf("%02x", buf[i]);
+	}
+	printf("\n");
+
 	return bytesWritten;
 }
 
@@ -515,7 +521,7 @@ int Serial_Port::read_port()
 	ProtocolConversion ptconv(this);
 	uint8_t total_bytes;
 	bool success;
-	mavlink_message_t message;
+	mavlink_message_t message = {0};
 
 	//==========串口接收(字符串)============//
 	printf("%s: 串口接收\n", uart_name);

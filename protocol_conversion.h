@@ -3,6 +3,7 @@
 
 #include "serial_port.h"
 #include "protocol_type.h"
+#include "sender.h"
 #include <string>
 #include <list>
 using namespace std;
@@ -21,6 +22,7 @@ public:
     void handle_message(mavlink_message_t &message);
 
     void autonomous_flight_and_steering(bz_message_uav_up_t bz_message);
+    void command_feedback_response(bz_message_uav_up_t bz_message);
     void invalid_teleconrol_cmd(bz_message_uav_up_t bz_message);
 
     Serial_Port *port;
@@ -48,6 +50,8 @@ public:
     void bz_finalize_message_encode(bz_message_ground_down_t *msg, uint8_t length, uint8_t sender_sysid, uint8_t receiver_sysid, uint16_t cmd);
     void uav_platform_feedback(bz_message_ground_down_t *msg, uint8_t sender_sysid, uint8_t receiver_sysid, drone_platform_status_feedback_data_t feedback_data);
     void ground_down_t_to_qbyte(char *buff, unsigned *len, bz_message_ground_down_t *msg);
+
+    void print_mavlink(mavlink_message_t message);
 
 private:
 

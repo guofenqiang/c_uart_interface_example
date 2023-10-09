@@ -7,57 +7,88 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+#include "sender.h"
 
-#define BUF_MAX_SIZE 1024
 
-int udp_sender(int argc, char *argv[]) {
-    int send_sockfd;                   // 发送方套接字描述符
-    char buffer[BUF_MAX_SIZE];         // 数据缓冲区
-    struct sockaddr_in multicast_addr; // 多播组套接字信息
+Sender::Sender(Serial_Port *_port)
+{
+    port = _port;
+}
 
-    /* 参数检查 */
-    if (argc != 3) {
-        printf("Command format : %s <multicast IP> <port>!\n", argv[0]);
-        exit(1);
+Sender::~Sender()
+{
+    close(sockfd);
+}
+
+int Sender::udp_sender() {
+    if (port->send_len >= 12) {
+        // for (int i = 0; i < port->send_len; i++) {
+        //     printf("%02x ", port->send_buff[i]);
+        // }
+        // printf("\n");
+
+        // 发送组播数据
+        if (sendto(sockfd, port->send_buff, port->send_len, 0, (struct sockaddr *) &multicast_addr, sizeof(multicast_addr)) < 0)
+        {
+            perror("sendto");
+            exit(EXIT_FAILURE);
+        };
     }
 
-    /* 获取发送方套接字文件描述符 */
-    if ((send_sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-        perror("socket error");
-        exit(1);
-    }
-
-    /* 初始化多播组套接字信息 */
-    memset(&multicast_addr, 0, sizeof(struct sockaddr_in));
-    multicast_addr.sin_family = AF_INET;                 // 使用IPv4
-    multicast_addr.sin_addr.s_addr = inet_addr(argv[1]); // 指定多播组IP
-    multicast_addr.sin_port = htons(atoi(argv[2]));      // 对端口进行字节序转化
-
-    /* 设定发送方发送的数据包的TTL值 */
-    int ttl = 32;
-    setsockopt(send_sockfd, IPPROTO_IP, IP_MULTICAST_TTL, (void *) &ttl, sizeof(ttl));
-
-    /* 循环向多播组中发送消息 */
-    while (1) {
-        memset(buffer, 0, BUF_MAX_SIZE);
-        printf("[sender] Input multicast message : ");
-        scanf("%[^\n]%*c", buffer);
-        sendto(send_sockfd, buffer, strlen(buffer), 0, (struct sockaddr *) &multicast_addr, sizeof(multicast_addr));
-    }
 
     return 0;
 }
 
-int udp_send_init()
+void *udp_sender_loop(void *args)
 {
-    int argc = 3;
-    char *argv[] = {
-        {""},
-        {"224.0.0.2"},
-        {"7033"},
-    };
+	Sender *sender = (Sender *)args;
+    while (1) {
+        int result = sender->udp_sender();
+        usleep(200000);
+    }
 
-    udp_sender(argc, argv);
+	return NULL;
+}
+
+int Sender::send_start()
+{
+	pthread_t read_tid;
+	int result;
+
+	result = pthread_create( &read_tid, NULL, udp_sender_loop, this);
+	if ( result ) throw result;
+}
+
+int Sender::udp_send_init()
+{
+#define MULTICAST_IP "224.0.0.2" // 组播IP地址
+#define PORT 7043 // 端口号
+#define IF_NAME "eth0" // 网口名称
+
+    // 创建UDP套接字
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置网口
+    if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, IF_NAME, strlen(IF_NAME)) < 0) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
+    // 设置组播IP和端口
+    memset(&multicast_addr, 0, sizeof(multicast_addr));
+    multicast_addr.sin_family = AF_INET;
+    multicast_addr.sin_port = htons(PORT);
+    if (inet_pton(AF_INET, MULTICAST_IP, &(multicast_addr.sin_addr)) <= 0) {
+        perror("inet_pton");
+        exit(EXIT_FAILURE);
+    }
+
+    send_start();
 
     return 0;
 }
