@@ -3,7 +3,6 @@
 
 #include "serial_port.h"
 #include "protocol_type.h"
-#include "sender.h"
 #include <string>
 #include <list>
 using namespace std;
@@ -12,7 +11,8 @@ class ProtocolConversion
 {
 public:
 
-    ProtocolConversion(Serial_Port *_port);
+    ProtocolConversion(Generic_Port *port_);
+    ProtocolConversion(Generic_Port *port_, Generic_Port *dest_port_);
     virtual ~ProtocolConversion();
 
     void bz_ground_to_uav(uint8_t *dest, uint8_t *src);
@@ -25,7 +25,8 @@ public:
     void command_feedback_response(bz_message_uav_up_t bz_message);
     void invalid_teleconrol_cmd(bz_message_uav_up_t bz_message);
 
-    Serial_Port *port;
+    Generic_Port *port;
+    Generic_Port *dest_port;
 
     typedef struct {
         uint8_t         main_mode;
@@ -52,6 +53,10 @@ public:
     void ground_down_t_to_qbyte(char *buff, unsigned *len, bz_message_ground_down_t *msg);
 
     void print_mavlink(mavlink_message_t message);
+
+    //需要发送的数据
+    char send_buff[300];
+	unsigned send_len;
 
 private:
 

@@ -446,30 +446,32 @@ quit_handler( int sig )
 
 int top1(int argc, char **argv)
 {
-	Serial_Port *port1;
-	Serial_Port *port2;
-
 	char uart_name1[] = "/dev/ttyS0"; //protocol <---> bz
 	int baudrate1 = 57600;
 
 	char uart_name2[] = "/dev/ttyS6"; //protocol <---> uav
 	int baudrate2 = 57600;
 
-	port1 = new Serial_Port(uart_name1, baudrate1); //protocol <---> bz
-	port2 = new Serial_Port(uart_name2, baudrate2); //protocol <---> uav
-	port1->start();
-	port2->start();
+    Generic_Port *port_bz;  //ttyS0
+    Generic_Port *port_uav; //ttyS6
 
-	port1->dest_port = port2;
-	port2->dest_port = port1;
-	port1->protocol_mode = 0; //telecontrol: ground->uav
-	port2->protocol_mode = 1; //telemetry:uav->ground
+	port_bz = new Serial_Port(uart_name1, baudrate1); //protocol <---> bz
+	port_uav = new Serial_Port(uart_name2, baudrate2); //protocol <---> uav
 
-	port1->read_start();
-	port2->read_start();
-	port2->write_start();
+	port_bz->start();
+	port_uav->start();
+
+	UAV_Interface interface_bz(port_bz, port_uav);
+	UAV_Interface interface_uav(port_uav, port_bz);
+
+	interface_bz.protocol_mode = 0; //telecontrol: ground->uav
+	interface_uav.protocol_mode = 1; //telemetry:uav->ground
+
+	interface_bz.start();
+	interface_uav.start();
+
 	// udp_recv_init();
-	Sender sender(port2);
+	Sender sender(&interface_uav);
 	sender.udp_send_init();
 	while (1);
 

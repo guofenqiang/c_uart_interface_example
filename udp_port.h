@@ -115,6 +115,9 @@ public:
 	void start();
 	void stop();
 
+	int read_bz_message(char *rx_buff, uint8_t *len);
+	int write_bz_message(char *tx_buff, uint8_t len);
+
 private:
 
 	mavlink_status_t lastStatus;

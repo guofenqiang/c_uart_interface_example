@@ -53,7 +53,7 @@
 // ------------------------------------------------------------------------------
 
 #include "serial_port.h"
-#include "protocol_conversion.h"
+#include "protocol_type.h"
 
 
 // ----------------------------------------------------------------------------------
@@ -513,121 +513,33 @@ _write_port(char *buf, unsigned len)
 	return bytesWritten;
 }
 
-
-int Serial_Port::read_port()
+int Serial_Port::read_bz_message(char *rx_buff, uint8_t *len)
 {
-#define  BUFF_SIZE 1024
-    char rx_buff[BUFF_SIZE];
-	ProtocolConversion ptconv(this);
-	uint8_t total_bytes;
+	uint8_t total_bytes = 0;
 	bool success;
-	mavlink_message_t message = {0};
+	#define  BUFF_SIZE 1024
+    // char rx_buff[BUFF_SIZE];
 
-	//==========串口接收(字符串)============//
-	printf("%s: 串口接收\n", uart_name);
-
-	while (1) {
-		total_bytes = 0;
-		if (protocol_mode == 0) {
-			while (total_bytes < BZ_GROUND_UPSTREAM_LEN) {
-				int bytes_read = read(fd, rx_buff + total_bytes, BUFF_SIZE - total_bytes);
-				if (bytes_read <= 0) {
-					break;
-				}
-
-				total_bytes += bytes_read;
-			}
-
-			for (int i = 0; i < total_bytes; i ++) {
-				printf("%02x", rx_buff[i]);
-			}
-			printf("\n");
-
-			ptconv.bz_telecontrol_decode(rx_buff, total_bytes);
-		} else if (protocol_mode == 1) {
-			/*接飞控后还是会丢一些包*/
-			// memset(rx_buff, 0, sizeof(rx_buff));
-			// while (total_bytes < rx_buff[1] + 12) {
-			// 	//nbytye只有是1的时候才不会异常
-			// 	// Lock
-			// 	pthread_mutex_lock(&lock);
-			// 	int bytes_read = read(fd, rx_buff + total_bytes, 1);
-			// 	// Unlock
-			// 	pthread_mutex_unlock(&lock);
-
-			// 	if (rx_buff[0] != 0xFD) {
-			// 		break;					
-			// 	}
-			// 	if (bytes_read <= 0) {
-			// 		break;
-			// 	}
-
-			// 	total_bytes += bytes_read;
-			// }
-
-			// ptconv.bz_telemetry_decode(rx_buff, total_bytes);
-
-			/*直接调用下面的也可以解析*/
-			success = this->read_message(message);
-			if (success) {
-				ptconv.handle_message(message);
-			}
-		} else {
-			printf("no supported protocol conversion\n");
-			throw;
+	while (total_bytes < BZ_GROUND_UPSTREAM_LEN) {
+		int bytes_read = read(fd, rx_buff + total_bytes, BUFF_SIZE - total_bytes);
+		if (bytes_read <= 0) {
+			break;
 		}
-		
-		// this->dest_port->write_port(rx_buff, rx_len);
+
+		total_bytes += bytes_read;
 	}
 
-	return 0;
-}
-
-int Serial_Port::write_port (char *buf, unsigned len)
-{
-	return _write_port(buf, len);
-}
-
-
-void *serial_read(void *args)
-{
-	Serial_Port *serial_port = (Serial_Port *)args;
-
-	int result = serial_port->read_port();
-	return NULL;
-}
-
-int Serial_Port::read_start()
-{
-	pthread_t read_tid;
-	int result;
-
-	result = pthread_create( &read_tid, NULL, serial_read, this);
-	if ( result ) throw result;
-}
-
-//当前是使用线程平台状态反馈
-void *serial_write(void *args)
-{	
-	Serial_Port *serial_port = (Serial_Port *)args;
-
-	while (1) {
-		int result = serial_port->dest_port->write_port(serial_port->send_buff, serial_port->send_len);
-		usleep(1000000);
+	for (int i = 0; i < total_bytes; i ++) {
+		printf("%02x", rx_buff[i]);
 	}
+	printf("\n");
 
-	return NULL;
+	*len = total_bytes;
 
+	return total_bytes;
 }
 
-int Serial_Port::write_start()
+int Serial_Port::write_bz_message(char *tx_buff, uint8_t len)
 {
-	pthread_t write_tid;
-	int result;
-	if (this->protocol_mode == 0) {
-		return 0;
-	}
-
-	result = pthread_create( &write_tid, NULL, serial_write, this);
-	if ( result ) throw result;
+	return _write_port(tx_buff, len);
 }

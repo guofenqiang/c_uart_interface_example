@@ -10,11 +10,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <net/if.h>
+#include "uav_interface.h"
 
 class Sender
 {
 public:
-    Sender(Serial_Port *_port);
+    Sender(UAV_Interface *uav_interface_);
     ~Sender();
     int udp_send_init();
     int send_start();
@@ -27,7 +28,7 @@ private:
     struct in_addr local_if;
     struct ip_mreqn mreq;
 
-    Serial_Port *port;
+    UAV_Interface *_uav_interface;
 };
 
 void *udp_sender_loop(void *args);

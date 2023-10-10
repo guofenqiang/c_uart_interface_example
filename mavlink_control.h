@@ -74,6 +74,7 @@ using namespace std;
 #include "udp_port.h"
 #include "receiver.h"
 #include "sender.h"
+#include "uav_interface.h"
 
 // ------------------------------------------------------------------------------
 //   Prototypes

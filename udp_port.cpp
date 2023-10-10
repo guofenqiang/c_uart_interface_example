@@ -372,3 +372,12 @@ _write_port(char *buf, unsigned len)
 }
 
 
+int UDP_Port::read_bz_message(char *rx_buff, uint8_t *len)
+{
+	return 0;
+}
+
+int UDP_Port::write_bz_message(char *tx_buff, uint8_t len)
+{
+	return 0;
+}

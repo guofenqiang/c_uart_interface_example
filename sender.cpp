@@ -11,9 +11,9 @@
 #include "sender.h"
 
 
-Sender::Sender(Serial_Port *_port)
+Sender::Sender(UAV_Interface *uav_interface_)
 {
-    port = _port;
+    _uav_interface = uav_interface_;
 }
 
 Sender::~Sender()
@@ -22,14 +22,14 @@ Sender::~Sender()
 }
 
 int Sender::udp_sender() {
-    if (port->send_len >= 12) {
+    if (_uav_interface->_ptconv->send_len >= 12) {
         // for (int i = 0; i < port->send_len; i++) {
         //     printf("%02x ", port->send_buff[i]);
         // }
         // printf("\n");
 
         // 发送组播数据
-        if (sendto(sockfd, port->send_buff, port->send_len, 0, (struct sockaddr *) &multicast_addr, sizeof(multicast_addr)) < 0)
+        if (sendto(sockfd, _uav_interface->_ptconv->send_buff, _uav_interface->_ptconv->send_len, 0, (struct sockaddr *) &multicast_addr, sizeof(multicast_addr)) < 0)
         {
             perror("sendto");
             exit(EXIT_FAILURE);

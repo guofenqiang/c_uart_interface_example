@@ -4,9 +4,16 @@
 #include <iostream>
 
 
-ProtocolConversion::ProtocolConversion(Serial_Port *_port)
+ProtocolConversion::ProtocolConversion(Generic_Port *port_)
 {
-    port = _port;
+    port = port_;
+    init_px4();
+}
+
+ProtocolConversion::ProtocolConversion(Generic_Port *port_, Generic_Port *dest_port_)
+{
+    port = port_;
+    dest_port = dest_port_;
     init_px4();
 }
 
@@ -89,8 +96,7 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
 
             feedback_data.platform_status = cov_flight_status(flightMode(_base_mode, _custom_mode));
             uav_platform_feedback(&bz_message, sender_sysid, receiver_sysid, feedback_data);
-            ground_down_t_to_qbyte(port->send_buff, &port->send_len, &bz_message);
-
+            ground_down_t_to_qbyte(send_buff, &send_len, &bz_message);
             // printf("roll: %f, pitch: %f, yaw: %f, roll1: %d, pitch1: %d, yaw1: %d\n", 
             // attitude.roll, attitude.pitch, attitude.yaw, feedback_data.roll_angle, feedback_data.pitch_angle, feedback_data.yaw_angle);
         }
@@ -148,7 +154,7 @@ void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_m
                                     bz_message.receiver_sysid,
                                     newBaseMode,
                                     custom_mode);
-        port->dest_port->write_message(message);
+        dest_port->write_message(message);
         printf("newBaseMode: 0x%02x\n", newBaseMode);
         printf("custom_mode: 0x%08x\n", custom_mode);
         print_mavlink(message);
