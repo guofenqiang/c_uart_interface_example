@@ -470,8 +470,10 @@ int top1(int argc, char **argv)
 	interface_bz.start();
 	interface_uav.start();
 
-	// udp_recv_init();
+	Receiver receiver(&interface_bz);
 	Sender sender(&interface_uav);
+
+	receiver.udp_recv_init();
 	sender.udp_send_init();
 	while (1);
 

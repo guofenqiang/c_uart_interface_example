@@ -8,23 +8,64 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include "receiver.h"
 
-#define BUF_MAX_SIZE 1024
+ 
+ Receiver::Receiver(UAV_Interface *uav_interface_)
+ {
+    _uav_interface = uav_interface_;
+ }
+ Receiver::~Receiver()
+ {
 
-struct udp_param{
-    int argc;
-    char **argv;
-};
+ }
 
-void *udp_receiver(void *arg) {
-    int recv_sockfd;                   // 接收方套接字描述符
-    char buffer[BUF_MAX_SIZE];         // 数据缓冲区
-    struct sockaddr_in multicast_addr; // 多播组套接字信息
-    struct ip_mreq multicast_group;    // 多播组信息
+int Receiver::udp_receiver() {
+    /* 循环接收多播消息 */
+    size_t total_bytes;
 
-    udp_param *param = (udp_param *)arg;
-    int argc = param->argc;
-    char **argv = param->argv;
+    memset(buffer, 0, BUF_MAX_SIZE);
+    total_bytes = recvfrom(recv_sockfd, buffer, sizeof(buffer), 0, NULL, 0);
+    for(int i = 0; i < total_bytes; i++) {
+        printf("%02x", buffer[i]);
+    }
+    printf("\n");
+    _uav_interface->_ptconv->bz_telecontrol_decode(buffer, total_bytes);
+
+    return 0;
+}
+
+void *udp_receiver_loop(void *args)
+{
+    Receiver *receiver = (Receiver *)args;
+    while (1) {
+        int result = receiver->udp_receiver();
+
+    }
+
+	return NULL;
+}
+
+int Receiver::receiver_start()
+{
+	pthread_t read_tid;
+	int result;
+
+	result = pthread_create( &read_tid, NULL, udp_receiver_loop, this);
+	if ( result ) throw result;
+}
+
+int Receiver::udp_recv_init()
+{
+    pthread_t read_tid;
+    int result;
+
+    int argc = 3;
+    char *argv[] = {
+        {""},
+        {"224.0.0.3"},
+        {"7044"}
+    };
 
     /* 参数检查 */
     if (argc != 3) {
@@ -55,35 +96,7 @@ void *udp_receiver(void *arg) {
     multicast_group.imr_interface.s_addr = INADDR_ANY;         // 加入多播组的主机地址信息
     setsockopt(recv_sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *) &multicast_addr, sizeof(multicast_addr));
 
-    /* 循环接收多播消息 */
-    while (1) {
-        memset(buffer, 0, BUF_MAX_SIZE);
-        recvfrom(recv_sockfd, buffer, sizeof(buffer), 0, NULL, 0);
-        printf("[receiver] multicast message : %s\n", buffer);
-    }
-
-    return (void*)0;
-}
-
-int udp_recv_init()
-{
-    pthread_t read_tid;
-    int result;
-
-    int argc = 3;
-    char *argv[] = {
-        {""},
-        {"224.0.0.3"},
-        {"7044"}
-    };
-    
-    udp_param param1;
-    
-    param1.argc = argc;
-    param1.argv = argv;
-
-    result = pthread_create( &read_tid, NULL, &udp_receiver, &param1);
-	if ( result ) throw result;
+    receiver_start();
 
     return 0;
 }
