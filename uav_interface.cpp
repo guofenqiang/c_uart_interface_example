@@ -108,13 +108,28 @@ int UAV_Interface::read_start()
 	if ( result ) throw result;
 }
 
+void UAV_Interface::platform_feedback()
+{
+	bz_message_ground_down_t bz_message = {0};
+
+	_ptconv->uav_platform_feedback(&bz_message, 
+								   _ptconv->sender_sysid, 
+								   10, 
+								   _ptconv->feedback_data);
+	_ptconv->ground_down_t_to_qbyte(_ptconv->send_buff, 
+									&_ptconv->send_len,
+									&bz_message);
+	int result = write_port(_ptconv->send_buff,
+							_ptconv->send_len);
+}
+
 //当前是使用线程平台状态反馈
 void *serial_write(void *args)
 {	
 	UAV_Interface *uav_interface = (UAV_Interface *)args;
 
 	while (1) {
-		int result = uav_interface->write_port(uav_interface->_ptconv->send_buff, uav_interface->_ptconv->send_len);
+		uav_interface->platform_feedback();
 		usleep(1000000);
 	}
 

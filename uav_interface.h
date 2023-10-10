@@ -31,6 +31,7 @@ public:
 	int write_start();
 
     ProtocolConversion *_ptconv;
+	void platform_feedback();
 
 private:
     Generic_Port *_port;
