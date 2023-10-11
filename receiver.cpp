@@ -23,14 +23,20 @@
 int Receiver::udp_receiver() {
     /* 循环接收多播消息 */
     size_t total_bytes;
+    char buffer_last[BUF_MAX_SIZE]; 
 
     memset(buffer, 0, BUF_MAX_SIZE);
     total_bytes = recvfrom(recv_sockfd, buffer, sizeof(buffer), 0, NULL, 0);
-    for(int i = 0; i < total_bytes; i++) {
+    if (!_uav_interface->compareArrays(buffer, buffer_last, total_bytes)) {
+        memcpy(buffer_last, buffer, total_bytes);
+        for(int i = 0; i < total_bytes; i++) {
         printf("%02x", buffer[i]);
+        }
+        printf("\n");
+        _uav_interface->_ptconv->bz_telecontrol_decode(buffer, total_bytes);       
+    } else {
+        usleep(10000);
     }
-    printf("\n");
-    _uav_interface->_ptconv->bz_telecontrol_decode(buffer, total_bytes);
 
     return 0;
 }

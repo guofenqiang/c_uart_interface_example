@@ -33,6 +33,8 @@ public:
     ProtocolConversion *_ptconv;
 	void platform_feedback();
 
+	bool compareArrays(char arr1[], char arr2[], uint8_t size);
+
 private:
     Generic_Port *_port;
     Generic_Port *_dest_port;

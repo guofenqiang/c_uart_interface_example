@@ -529,11 +529,6 @@ int Serial_Port::read_bz_message(char *rx_buff, uint8_t *len)
 		total_bytes += bytes_read;
 	}
 
-	for (int i = 0; i < total_bytes; i ++) {
-		printf("%02x", rx_buff[i]);
-	}
-	printf("\n");
-
 	*len = total_bytes;
 
 	return total_bytes;

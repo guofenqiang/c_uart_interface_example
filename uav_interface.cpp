@@ -42,9 +42,21 @@ int UAV_Interface::read_port()
 	while (1) {
 		total_bytes = 0;
 		if (protocol_mode == 0) {
+			char rx_buff_last[BUFF_SIZE] = {0};
+
             success = _port->read_bz_message(rx_buff, &total_bytes);
             if (success) {
-			    _ptconv->bz_telecontrol_decode(rx_buff, total_bytes);
+				if (!compareArrays(rx_buff, rx_buff_last, total_bytes)) {
+					memcpy(rx_buff_last, rx_buff, total_bytes);
+					for (int i = 0; i < total_bytes; i ++) {
+						printf("%02x", rx_buff[i]);
+					}
+					printf("\n");
+			    	_ptconv->bz_telecontrol_decode(rx_buff, total_bytes);
+				} else {
+					// memset(rx_buff_last, 0, sizeof(rx_buff_last));
+					usleep(10000);
+				}
             }
 		} else if (protocol_mode == 1) {
 			/*接飞控后还是会丢一些包*/
@@ -147,4 +159,15 @@ int UAV_Interface::write_start()
 
 	result = pthread_create( &write_tid, NULL, serial_write, this);
 	if ( result ) throw result;
+}
+
+
+bool UAV_Interface::compareArrays(char arr1[], char arr2[], uint8_t size) 
+{
+    for (int i = 0; i < size; i++) {
+        if (arr1[i] != arr2[i]) {
+            return false;
+        }
+    }
+    return true;
 }
