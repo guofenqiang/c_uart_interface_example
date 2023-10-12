@@ -64,6 +64,16 @@
 // ------------------------------------------------------------------------------
 //   Con/De structors
 // ------------------------------------------------------------------------------
+UDP_Port::UDP_Port(const char *host_ip_, int host_port_, const char *peer_ip_, int peer_port_)
+{
+	initialize_defaults();
+	host_ip = host_ip_;
+	host_port = host_port_;
+	peer_ip = peer_ip_;
+	peer_port = peer_port_;
+	is_open = false;
+}
+
 UDP_Port::
 UDP_Port(const char *target_ip_, int udp_port_)
 {
@@ -371,13 +381,111 @@ _write_port(char *buf, unsigned len)
 	return bytesWritten;
 }
 
+void UDP_Port::start(const char *host_ip_, int host_port_)
+{
+#define IF_NAME "eth0" // 网口名称
+
+	/*****************************************
+	 * 添加接收方向的socket
+	 * ***************************************/
+	struct sockaddr_in addr;
+	struct ip_mreq multicast_group;
+
+	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sock < 0)
+	{
+		perror("error socket failed");
+		throw EXIT_FAILURE;
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = inet_addr(host_ip);
+	addr.sin_port = htons(host_port);
+
+    /* 绑定多播组套接字信息 */
+    if (bind(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr))) {
+		perror("error bind failed");
+		close(sock);
+		sock = -1;
+		throw EXIT_FAILURE;
+    }
+
+    /* 将本机加入多播组 */
+    multicast_group.imr_multiaddr.s_addr = inet_addr(host_ip_); // 多播组需要使用D类IP地址，其范围为224.0.0.0-239.255.255.255
+    multicast_group.imr_interface.s_addr = INADDR_ANY;         // 加入多播组的主机地址信息
+    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *) &addr, sizeof(addr));
+
+	// 设置网口
+    if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, IF_NAME, strlen(IF_NAME)) < 0) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
+	printf("Listening to %s:%i\n", host_ip, host_port);
+
+
+	/*****************************************
+	 * 由于发送又是另外一个ip地址，所以添加发送方向的socket
+	 * ***************************************/
+	struct sockaddr_in multicast_addr;
+
+	send_sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (send_sock < 0) {
+		perror("error sender bind failed");
+		close(send_sock);
+		send_sock = -1;
+		throw EXIT_FAILURE;
+	}
+
+	// 设置网口
+    if (setsockopt(send_sock, SOL_SOCKET, SO_BINDTODEVICE, IF_NAME, strlen(IF_NAME)) < 0) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(&multicast_addr, 0, sizeof(multicast_addr));
+    multicast_addr.sin_family = AF_INET;
+    multicast_addr.sin_port = htons(peer_port);
+    if (inet_pton(AF_INET, peer_ip, &(multicast_addr.sin_addr)) <= 0) {
+        perror("inet_pton");
+        exit(EXIT_FAILURE);
+    }
+
+	printf("send to %s:%i\n", peer_ip, peer_port);
+		
+}
 
 int UDP_Port::read_bz_message(char *rx_buff, uint8_t *len)
 {
-	return 0;
+#define  BUFF_SIZE 1024
+
+    size_t total_bytes;
+	memset(rx_buff, 0, BUFF_SIZE);
+	total_bytes = recvfrom(sock, rx_buff, BUFF_SIZE, 0, NULL, 0);
+
+	*len = total_bytes;
+
+	return total_bytes;
 }
 
 int UDP_Port::write_bz_message(char *tx_buff, uint8_t len)
 {
+	int bytesWritten;
+
+    if (len >= 12) {
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = inet_addr(peer_ip);
+		addr.sin_port = htons(peer_port);
+
+		if (bytesWritten = sendto(send_sock, tx_buff, len, 0, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) < 0)
+		{
+			printf("%d\n", bytesWritten);
+			perror("sendto");
+			exit(EXIT_FAILURE);
+		};
+	}
 	return 0;
 }

@@ -86,6 +86,7 @@ public:
 	virtual void stop()=0;
 	virtual int read_bz_message(char *rx_buff, uint8_t *len)=0;
 	virtual int write_bz_message(char *tx_buff, uint8_t len)=0;
+	virtual void start(const char *host_ip_, int udp_port_)=0;
 };
 
 

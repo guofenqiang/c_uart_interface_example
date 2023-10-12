@@ -118,6 +118,7 @@ public:
 	void start();
 	void stop();
 
+	void start(const char *host_ip_, int host_port_);
 	int read_bz_message(char *rx_buff, uint8_t *len);
 	int write_bz_message(char *tx_buff, uint8_t len);
 

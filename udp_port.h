@@ -104,6 +104,7 @@ public:
 
 	UDP_Port();
 	UDP_Port(const char *target_ip_, int udp_port_);
+	UDP_Port(const char *host_ip_, int host_port_, const char *peer_ip_, int peer_port_);
 	virtual ~UDP_Port();
 
 	int read_message(mavlink_message_t &message);
@@ -115,6 +116,7 @@ public:
 	void start();
 	void stop();
 
+	void start(const char *host_ip_, int host_port_);
 	int read_bz_message(char *rx_buff, uint8_t *len);
 	int write_bz_message(char *tx_buff, uint8_t len);
 
@@ -139,6 +141,11 @@ private:
 	int  _read_port(uint8_t &cp);
 	int _write_port(char *buf, unsigned len);
 
+	const char *host_ip;
+	int host_port;
+	const char *peer_ip;
+	int peer_port;
+	int send_sock;
 };
 
 

@@ -63,6 +63,11 @@
 // ------------------------------------------------------------------------------
 //   Con/De structors
 // ------------------------------------------------------------------------------
+void Serial_Port::start(const char *host_ip_, int host_port_)
+{
+
+}
+
 Serial_Port::
 Serial_Port(const char *uart_name_ , int baudrate_)
 {

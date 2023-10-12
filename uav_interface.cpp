@@ -142,7 +142,7 @@ void *serial_write(void *args)
 
 	while (1) {
 		uav_interface->platform_feedback();
-		usleep(1000000);
+		usleep(200000);
 	}
 
 	return NULL;

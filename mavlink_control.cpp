@@ -452,13 +452,26 @@ int top1(int argc, char **argv)
 	char uart_name2[] = "/dev/ttyS6"; //protocol <---> uav
 	int baudrate2 = 57600;
 
+	bool use_udp = true;
+	char *host_ip = (char*)"224.0.0.3"; //udp组播客户端地址
+	int host_port = 7044; //udp组播客户端端口
+	char *peer_ip = (char*)"224.0.0.2"; // udp组播客户端地址
+	int peer_port = 7043; //udp组播客户端端口
+
     Generic_Port *port_bz;  //ttyS0
     Generic_Port *port_uav; //ttyS6
 
-	port_bz = new Serial_Port(uart_name1, baudrate1); //protocol <---> bz
+	if (use_udp) {
+		port_bz = new UDP_Port(host_ip, host_port, peer_ip, peer_port); //protocol <---> bz
+	} else {
+		port_bz = new Serial_Port(uart_name1, baudrate1);
+	}
 	port_uav = new Serial_Port(uart_name2, baudrate2); //protocol <---> uav
-
-	port_bz->start();
+	if (use_udp) {
+		port_bz->start(peer_ip, peer_port); //由于为了初始化一个自己的组播fd，重写了一个start
+	} else {
+		port_bz->start();
+	}
 	port_uav->start();
 
 	UAV_Interface interface_bz(port_bz, port_uav);
@@ -470,11 +483,7 @@ int top1(int argc, char **argv)
 	interface_bz.start();
 	interface_uav.start();
 
-	Receiver receiver(&interface_bz);
-	Sender sender(&interface_uav);
 
-	receiver.udp_recv_init();
-	sender.udp_send_init();
 	while (1);
 
 	return 0;
