@@ -4,6 +4,7 @@
 
 #include "generic_port.h"
 #include "protocol_conversion.h"
+#include "timer.h"
 
 #include <signal.h>
 #include <time.h>
@@ -34,6 +35,12 @@ public:
 	void platform_feedback();
 
 	bool compareArrays(char arr1[], char arr2[], uint8_t size);
+	void Init_Timer0();
+	Timer timer;
+	void timer_handler();
+	void exec_feedback_handle();
+	uint8_t _flag;
+	char rx_buff_last[1024];
 
 private:
     Generic_Port *_port;

@@ -5,6 +5,7 @@ UAV_Interface::UAV_Interface(Generic_Port *port_)
 {
     _port = port_;
     _ptconv = new ProtocolConversion(_port);
+	Init_Timer0();
 }
 
 UAV_Interface::UAV_Interface(Generic_Port *port_, Generic_Port *dest_port_)
@@ -12,7 +13,7 @@ UAV_Interface::UAV_Interface(Generic_Port *port_, Generic_Port *dest_port_)
     _port = port_;
     _dest_port = dest_port_;
     _ptconv = new ProtocolConversion(_port, dest_port_);
-    
+	Init_Timer0();   
 }
 
 
@@ -42,21 +43,23 @@ int UAV_Interface::read_port()
 	while (1) {
 		total_bytes = 0;
 		if (protocol_mode == 0) {
-			char rx_buff_last[BUFF_SIZE] = {0};
-
             success = _port->read_bz_message(rx_buff, &total_bytes);
-            if (success) {
-				if (!compareArrays(rx_buff, rx_buff_last, total_bytes)) {
-					memcpy(rx_buff_last, rx_buff, total_bytes);
-					for (int i = 0; i < total_bytes; i ++) {
-						printf("%02x", rx_buff[i]);
-					}
-					printf("\n");
-			    	_ptconv->bz_telecontrol_decode(rx_buff, total_bytes);
-				} else {
-					// memset(rx_buff_last, 0, sizeof(rx_buff_last));
-					usleep(10000);
+            if (success) {				
+				if (_flag == 0) {
+					timer.start(1000000);
+					_flag = 1;
 				}
+
+				if (compareArrays(rx_buff, rx_buff_last, total_bytes)) {
+					continue;
+				} 
+
+				memcpy(rx_buff_last, rx_buff, total_bytes);
+				for (int i = 0; i < total_bytes; i ++) {
+					printf("%02x", rx_buff[i]);
+				}
+				printf("\n");
+				_ptconv->bz_telecontrol_decode(rx_buff, total_bytes);
             }
 		} else if (protocol_mode == 1) {
 			/*接飞控后还是会丢一些包*/
@@ -170,4 +173,46 @@ bool UAV_Interface::compareArrays(char arr1[], char arr2[], uint8_t size)
         }
     }
     return true;
+}
+
+
+void UAV_Interface::exec_feedback_handle()
+{
+	memset(rx_buff_last, 0, 1024);
+	_flag = 0;
+}
+
+void UAV_Interface::timer_handler()
+{
+	static int count = 0;
+	_flag = 0;
+
+	while (true) {
+		if (timer.wait()) {
+			// 执行定时任务
+			if (count == 1000) {
+				count = 0;
+				exec_feedback_handle();
+			}
+			count++;
+		}
+	}
+}
+
+void *exec_timer(void *args)
+{	
+	UAV_Interface *uav_interface = (UAV_Interface *)args;
+
+	uav_interface->timer_handler();
+
+	return NULL;
+}
+
+void UAV_Interface::Init_Timer0()
+{
+	pthread_t tid;
+
+	pthread_create( &tid, NULL, exec_timer, this);
+
+    return;
 }
