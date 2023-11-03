@@ -39,7 +39,7 @@ typedef struct __bz_message_uav_up_t {
     uint8_t receiver_sysid;
     uint8_t cmd0;
     uint8_t cmd1;
-    uint8_t pyload[BZ_UAV_UPSTREAM_LEN - 12];
+    uint8_t pyload[BZ_GROUND_UPSTREAM_LEN - 12];
     uint8_t ck0;
     uint8_t ck1;
     uint8_t frame_tail;
@@ -145,7 +145,15 @@ enum {
     ROUTE_CONFIRMATION_REPLY,
 };
 
-
+enum {
+    SINGLE_ROUTE = 0x00,
+    TAKEOFF_ROUTE = 0xD0,
+    LAND_ROUTE,
+    CRUISE_ROUTE,
+    LEVEL_ROUTE,
+    HOMEWARD_ROUTE,
+    EMERGENCY_ROUTE,
+};
 
 enum PX4_CUSTOM_MAIN_MODE {
 	PX4_CUSTOM_MAIN_MODE_MANUAL = 1,
@@ -194,6 +202,263 @@ union px4_custom_mode {
 #pragma pack(push)
 #pragma pack(1)
 
+typedef struct __photoelectric_load_work_mode {
+    uint8_t enable;
+} photoelectric_load_work_mode_t;
+
+typedef struct __photoelectric_load_dual_light_switching {
+    uint8_t light_mode; /* 0x01: visible light, 0x02: infrared, 0x03: Picture in Picture */
+} photoelectric_load_dual_light_switching_t;
+
+typedef struct __photoelectric_load_image_stabilizing {
+    uint8_t enbale;
+} photoelectric_load_image_stabilizing_t;
+
+typedef struct __photoelectric_load_zoom {
+    uint8_t dir; /* 0x01: add, 0x02: reduce */
+} photoelectric_load_zoom_t;
+
+typedef struct __photoelectric_load_laser_irradiation {
+    uint8_t enable;
+} photoelectric_load_laser_irradiation_t;
+
+typedef struct __photoelectric_load_take_photos {
+    uint8_t mode; /* 0x01: singale take photos, 0x02: continuous take photos*/
+} _photoelectric_load_take_photos_t;
+
+typedef struct __photoelectric_load_center {
+    uint8_t enable;
+} photoelectric_load_center_t;
+
+typedef struct __photoelectric_load_video {
+    uint8_t enable;
+} photoelectric_load_video_t;
+
+typedef struct __photoelectric_load_target_detection_and_recognition {
+    uint8_t enable;
+} photoelectric_load_target_detection_and_recognition_t;
+
+typedef struct __photoelectric_load_automatic_target_tracking {
+    uint8_t enable;
+    uint16_t x;
+    uint16_t y;
+    uint16_t width;
+    uint16_t height;
+} photoelectric_load_automatic_target_tracking_t;
+
+typedef struct __photoelectric_load_pan_tilt_control_mode{
+    uint8_t mode; /* 0x01: angle, 0x02: velocity, 0x03: scan, 0x04: stop*/
+    int16_t angle;
+    int16_t dir;
+    int16_t pitch;
+    int16_t yaw;
+    uint16_t scan_angle_velocity;
+} photoelectric_load_pan_tilt_control_mode_t;
+
+typedef struct __optoelectronic_load_status_query {
+    uint8_t status; /* 0x01: image, 0x02: vido, 0x03: laser ranging, 0x04: laser irradiation*/
+} optoelectronic_load_status_query_t;
+
+typedef struct __GJ_work_mode {
+    uint8_t enable;
+} GJ_work_mode_t;
+
+typedef struct __GJ_attack_mode {
+    uint8_t mode; /* 0x01: 抛投, 0x02: 射流, 0x03: 定时引爆*/
+} attack_mode_t;
+
+typedef struct __GJ_insurance_mode {
+    uint8_t enable;
+} GJ_insurance_mode_t;
+
+typedef struct __GJ_attack_status {
+    uint8_t enable;
+} GJ_attack_status_t;
+
+typedef struct __GJ_automatic_target_tracking {
+    uint8_t enable;
+    uint16_t left_pixel_x;
+    uint16_t left_pixel_y;
+    uint16_t target_width;
+    uint16_t target_height;
+} GJ_automatic_target_tracking_t;
+
+typedef struct __GJ_autonomous_strike {
+    uint8_t enable;
+    uint16_t left_pixel_x;
+    uint16_t left_pixel_y;
+    uint16_t target_width;
+    uint16_t target_height;
+} GJ_autonomous_strike_t;
+
+typedef struct __GJ_load_status_query {
+    uint8_t mode; /* 0x01: DJ载荷, 0x02: zdb */
+} GJ_load_status_query_t;
+
+typedef struct __GJ_ZDB_control {
+    uint8_t reserved[2]; /* reserved */
+    uint8_t mode; /* 0x01: 解保I, 0x02: 解保II, 0x03: 发火, 0x04: 检弹, 0xFF: 状态查询*/
+} GJ_ZDB_control_t;
+
+typedef struct __manual_mode {
+    uint8_t enable;
+    int16_t forward_speed;
+    int16_t level_speed;
+    int16_t vtol_speed;
+    int16_t uav_head_angle;
+} manual_mode_t;
+
+typedef struct __autonomous_takeoff {
+    uint8_t enable;
+    int16_t height;
+} autonomous_takeoff_t;
+
+typedef struct __autonomous_return {
+    uint8_t enable;
+} autonomous_return_t;
+
+typedef struct __autonomous_cruise {
+    uint8_t enable;
+} autonomous_cruise_t;
+
+typedef struct __autonomous_flight {
+    uint8_t act; /* 0x01: 前向, 0x02: 后向, 0x03: 左向, 0x04: 右向, 0x05: 升高, 0x06: 降低, 0x07: 左旋, 0x08: 右旋, 0xff: 关闭*/
+    uint16_t virt_joy;
+} autonomous_flight_t;
+
+typedef struct __autonomous_obstacle_avoidance {
+    uint8_t enable;
+} autonomous_obstacle_avoidance_t;
+
+typedef struct __route_inquiry {
+    uint8_t route_number;
+} route_inquiry_t;
+
+typedef struct  __speed_setting {
+    uint8_t mode; /* 0X01-巡航速度设置，0X02-最大速度设置 0X03-平飞速度设置 */
+    uint16_t speed; /* 范围：0~60m/s 单位：0.1 m/s  ×10 上传*/
+} speed_setting_t;
+
+typedef struct __route_setting {
+    uint8_t upload;
+    int32_t longitude;
+    int32_t latitude;
+    int16_t relative_height;
+    uint8_t waypoint_numbers;
+    uint8_t waypoint_id;
+    uint8_t route_number;
+    uint8_t route_type;
+    uint8_t waypoint_type;
+    uint16_t stay_time;
+    uint16_t relative_ground_speed;
+} route_setting_t;
+
+typedef struct __differential_data_setting {
+    uint8_t enable;
+    uint8_t data[51];
+} differential_data_setting_t;
+
+typedef struct __route_flight {
+    uint8_t route_switch; /*0x00: signal route on, 0xff: route off, 0x01-0x0fe: other route */
+    uint8_t start_mode; /* 0: restart, 1: last history, 2: designated_waypoint*/
+    uint8_t start_id; /* start_id is valid in start_mode 2*/
+} route_flight_t;
+
+typedef struct __geographic_coordinage_guidance {
+    uint8_t enable;
+    int32_t longitude;
+    int32_t latitude;
+    int16_t altitude;
+    int16_t angle;
+} geographic_coordinage_guidance_t;
+
+typedef struct __route_download {
+    uint8_t route_number;
+} route_download_t;
+
+typedef struct __autonomous_navigation_positioning_setting {
+    uint8_t enable;
+    int32_t ref_longitude;
+    int32_t ref_latitude;
+    int16_t ref_altitude;
+    int16_t ref_angle;
+} autonomous_navigation_positioning_setting_t;
+
+typedef struct __autonomous_land {
+    uint8_t enable;
+} autonomous_land_t;
+
+typedef struct __formation_flight {
+    uint8_t enable;
+} formation_flight_t;
+
+typedef struct __formation_changes {
+    uint8_t mode; /* 0X00-维持原队形，0X01-一字型队形，0X02-人字形队形，0X03-圆形队形*/
+} formation_changes_t;
+
+typedef struct __formation_takeoff {
+    uint8_t enable;
+} formation_takeoff_t;
+
+typedef struct __formation_land {
+    uint8_t enable;
+} formation_land_t;
+
+typedef struct __formation_leader_set {
+    uint8_t enable;
+    uint8_t uav_id;
+    int32_t target_longitude;
+    int32_t target_latitude;
+    int16_t target_relative_altitude;
+} formation_leader_set_t;
+
+typedef struct __image_status_feedback_data {
+    uint8_t work_mode; /* 0X01-可见光图像，0X02-红外图像 */
+    uint8_t photgraph_mode; /* 0X00-关闭，0X01-单拍， 0X02-连拍*/
+    uint8_t ppi; /*0X01-1080P，0X02-720P，0X03-640×512，0X04-320×256*/
+} image_status_feedback_data_t;
+
+typedef struct __video_status_feedback{
+    uint8_t work_mode; /* 0X01-可见光图像，0X02-红外图像，0X03-画中画*/
+    uint8_t ppi; /* 0X01-1080P，0X02-720P，0X03-640×512，0X04-320×256*/
+    uint8_t video_bitrate; /* 单位：0.1M，x10上传*/
+    uint8_t video_frame_rate; /*单位：0.5HZ，x2上传*/
+} video_status_feedback;
+
+typedef struct __laser_ranging_feedback{
+    uint8_t work_mode;
+    int16_t range_distance; /*单位 0.1米,负数表示测距无效，x10上传*/
+    uint16_t left_pixel_x;
+    uint16_t left_pixel_y;
+    uint16_t width;
+    uint16_t height;
+    int32_t longitude;
+    int32_t latitude;
+    int16_t altitude;
+} laser_ranging_feedback;
+
+typedef struct __laseer_irradiation_feedback{
+    uint8_t status;
+    uint16_t end_time;
+    uint16_t start_time;
+} laseer_irradiation_feedback;
+
+typedef struct __attack_payload_feedback_data{
+    uint8_t status;
+    uint8_t attack_mode; /*0X01-抛射，0X02-射流，0X03-定时引爆（zdb）*/
+    uint8_t insure_mode;
+    uint8_t GJ_status;
+    uint8_t self_test;
+} attack_payload_feedback_data;
+
+typedef struct __zdb_feedback_data {
+    uint8_t status;
+    uint8_t attack_mode;
+    uint8_t insure_mode;
+    uint8_t GJ_status;
+    uint8_t self_test;
+} zdb_feedback_data_t;
+
 typedef struct __drone_platform_status_feedback_data {
     uint8_t flight_control_version;
     uint8_t hw_version;
@@ -227,6 +492,34 @@ typedef struct __drone_platform_status_feedback_data {
     uint8_t	flight_confirmation;
 } drone_platform_status_feedback_data_t;
 
+/*Zdb状态反馈指令 0x56*/
+
+typedef struct __task_status_feedback_data {
+    uint8_t work_mode; /* 0X01-视频，0X02-目标检测识别，0X03-自主跟踪*/
+    uint8_t target_numbers;
+    int16_t laser_ranging_returns_distance_information; /*单位 0.1米,负数表示测距无效，x10上传*/
+    uint16_t countdown_of_laser_cooling; /*0:无计时;  >0 冷却倒计时中,单位秒*/
+    uint16_t laser_on_time; /*单位秒*/
+    uint8_t target_properties; /*0X01-人员，0X02-轿车，0X03-tank，0X04-堡垒*/
+    uint16_t left_pixel_x;
+    uint16_t left_pixel_y;
+    uint16_t width;
+    uint16_t height;
+    int32_t longitude;
+    int32_t latitude;
+    int16_t altitude;
+} task_status_feedback_data_t;
+
+typedef struct __formation_status_feedback_data {
+    uint8_t status;
+    uint8_t formation; /*0X01-一字型队形，0X02-人字形队形，0X03-圆形队形*/
+    uint16_t leader_angle;
+    int32_t leader_longitude;
+    int32_t leader_latitude;
+    int32_t leader_altitude;
+    int32_t leader_ground_speed;
+} formation_status_feedback_data_t;
+
 typedef struct __command_feedback_response {
     uint8_t reciver_status;
     uint16_t cmd_id;
@@ -235,6 +528,43 @@ typedef struct __command_feedback_response {
     uint16_t reciver_time;
     uint8_t cmd_status;
 } command_feedback_response_t;
+
+typedef struct __route_inquiry_reply {
+    uint8_t route_number;
+    int32_t waypoint_longitude;
+    int32_t waypoint_latitude;
+    int16_t waypoint_altitude;
+    uint8_t waypoint_numbers;
+    uint8_t waypoint_id;
+    uint8_t route_id;
+    uint8_t route_type;
+    uint8_t waypoint_type;
+    uint16_t stay_time;
+    uint16_t ground_speed;
+} route_inquiry_reply_t;
+
+typedef struct __route_download_reply {
+    uint8_t route_number;
+    int32_t waypoint_longitude;
+    int32_t waypoint_latitude;
+    int16_t waypoint_altitude;
+    uint8_t waypoint_numbers;
+    uint8_t waypoint_id;
+    uint8_t route_id;
+    uint8_t route_type;
+    uint8_t waypoint_type;
+    uint16_t stay_time;
+    uint16_t ground_speed;
+} route_download_reply_t;
+
+typedef struct __route_confirmation_reply {
+    uint8_t route_id;
+    uint8_t route_type;
+    uint8_t waypoint_numbers;
+    uint8_t pre_correct_waypoint_id;
+    uint8_t waypoint_type;
+    uint8_t status;
+} route_confirmation_reply_t;
 
 #pragma pack(pop)
 

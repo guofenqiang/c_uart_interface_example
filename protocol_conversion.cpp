@@ -24,10 +24,16 @@ ProtocolConversion::~ProtocolConversion()
 
 void ProtocolConversion::bz_ground_to_uav(uint8_t *dest, uint8_t *src)
 {
-    uint8_t UAVBuffer[BZ_UAV_UPSTREAM_LEN];
+    uint8_t UAVBuffer[BZ_UAV_UPSTREAM_LEN] = {0};
 
-    BZ_Ground2UAV(UAVBuffer, (uint8_t *)src);
-    memcpy((uint8_t*)dest, UAVBuffer, BZ_UAV_UPSTREAM_LEN);
+    BZ_STATUS result = BZ_Ground2UAV(UAVBuffer, (uint8_t *)src);
+    if (result == BZ_OK) {
+        memcpy((uint8_t*)dest, UAVBuffer, BZ_UAV_UPSTREAM_LEN);
+    } else if (result == BZ_INVALID_ADDRESS){
+        printf("BZ_INVALID_ADDRESS\n");
+    } else if (result == BZ_CRC_UNPASSED) {
+        printf("BZ_CRC_UNPASSED\n");
+    }
 
     return;
 }
@@ -39,20 +45,84 @@ void ProtocolConversion::bz_uav_to_ground()
 
 void ProtocolConversion::bz_telecontrol_decode(char *buff, int len)
 {
-    uint8_t uav_buff[BZ_UAV_UPSTREAM_LEN];
     bz_message_uav_up_t bz_message = {};
 
-    bz_ground_to_uav(uav_buff, (uint8_t *)buff);
-    memcpy((uint8_t *)&bz_message.frame_header1, (uint8_t *)&uav_buff[0], sizeof(bz_message));
+    memcpy((uint8_t *)&bz_message.frame_header1, (uint8_t *)buff, sizeof(bz_message));
 
     switch (bz_message.cmd0 << 8 | bz_message.cmd1) {
+        case MANUAL_MODE:
+        {
+            virtual_rocker_mode(bz_message);
+            break;
+        }
+
+        case AUTONOMOUS_TAKEOFF:
+        {
+            autonomous_takeoff(bz_message);
+            break;
+        }
+
+        case AUTONOMOUS_RETURN:
+        {
+            autonomous_return(bz_message);
+            break;
+        }
+
+        case AUTONOMOUS_CRUISE:
+        {
+            autonomous_cruise(bz_message);
+            break;
+        }
+
         case AUTONOMOUS_FLIGHT_AND_STEERING:
+        {
             autonomous_flight_and_steering(bz_message);
             break;
+        }
+
+        case ROUTE_SETTING:
+        {
+            route_setting(bz_message);
+            break;
+        }
+        
+        case ROUTE_FLIGHT_INSTRUCTIONS:
+        {
+            route_flight_instructions(bz_message);
+            break;
+        }
+
+        case GEOGRAPHIC_COORDINATE_GUIDANCE:
+        {
+            geographic_coordinage_guidance(bz_message);
+            break;
+        }
+
+        case ROUTE_DOWNLOAD_SWITCH:
+        {
+            route_downlaod_switch(bz_message);
+            break;
+        }
+
+        case AUTONOMOUS_PRECISION_LAND:
+        {
+            autonomous_precision_land(bz_message);
+            break;
+        }
+
+        case ROUTE_DOWNLOAD_REPLY:
+        {
+            route_download_reply(bz_message);
+            break;
+        }
+
         default :
+        {
             invalid_teleconrol_cmd(bz_message);
             break; 
+        }
         
+        // 每收到一次遥控指令都需要发送一次指令反馈恢复
         command_feedback_response(bz_message);
     }
 
@@ -67,11 +137,12 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
 
     bz_message_ground_down_t bz_message = {0};
 
-    drone_platform_status_feedback_data_t feedback_data = {0};
-
+    mavlink_mission_count_t mission_count;
+    // printf("msgid: %d\n", message.msgid);
     // Handle Message ID
     switch (message.msgid)
     {
+        sender_sysid = message.msgid;
         case MAVLINK_MSG_ID_HEARTBEAT:
         {
             mavlink_msg_heartbeat_decode(&message, &heartbeat);
@@ -80,11 +151,30 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             break;
         }
 
+        case MAVLINK_MSG_ID_SYS_STATUS:
+        {
+            mavlink_sys_status_t sys_status;
+            mavlink_msg_sys_status_decode(&message, &sys_status);
+
+            if (sys_status.current_battery > 0) {
+                feedback_data.battery_voltage = sys_status.current_battery/1000 * 10;
+            } else {
+                feedback_data.battery_voltage = 0;
+            }          
+            
+            if (sys_status.battery_remaining > 0)
+            {
+                feedback_data.percentage_of_remaining_battery_power = sys_status.battery_remaining;
+            } else {
+                feedback_data.percentage_of_remaining_battery_power = 0;
+            }
+            
+            // printf("voltage: %d, remain: %d\n", feedback_data.battery_voltage, feedback_data.percentage_of_remaining_battery_power);
+            break;
+        }
+
         case MAVLINK_MSG_ID_ATTITUDE:
         {
-            uint8_t sender_sysid = message.sysid;
-            uint8_t receiver_sysid = 10;
-
             mavlink_msg_attitude_decode(&message, &attitude);
             feedback_data.roll_angle = attitude.roll * 57.3 * 100;
             feedback_data.pitch_angle = attitude.pitch * 57.3 * 100;
@@ -95,10 +185,13 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             }
 
             feedback_data.platform_status = cov_flight_status(flightMode(_base_mode, _custom_mode));
-            uav_platform_feedback(&bz_message, sender_sysid, receiver_sysid, feedback_data);
-            ground_down_t_to_qbyte(send_buff, &send_len, &bz_message);
-            // printf("roll: %f, pitch: %f, yaw: %f, roll1: %d, pitch1: %d, yaw1: %d\n", 
-            // attitude.roll, attitude.pitch, attitude.yaw, feedback_data.roll_angle, feedback_data.pitch_angle, feedback_data.yaw_angle);
+
+            feedback_data.startup_time = attitude.time_boot_ms / 1000;
+            // printf("roll: %d, pitch: %d, yaw: %d\n", 
+            //         feedback_data.roll_angle / 100, 
+            //         feedback_data.pitch_angle / 100,
+            //         feedback_data.yaw_angle / 10);
+            break;
         }
 
         // case MAVLINK_MSG_ID_ALTITUDE:
@@ -108,6 +201,151 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
 
         //     feedback_data.relative_height = (int16_t)altitude.altitude_relative * 10;
         // }
+
+        case MAVLINK_MSG_ID_GPS_RAW_INT:
+        {
+            mavlink_gps_raw_int_t gps_raw_int;
+            mavlink_msg_gps_raw_int_decode(&message, &gps_raw_int);
+
+            feedback_data.latitude = gps_raw_int.lat;
+            feedback_data.longitude = gps_raw_int.lon;
+            feedback_data.relative_height = gps_raw_int.alt / 100000;
+
+            // feedback_data.latitude = 300181923;
+            // feedback_data.longitude = 1199695779;
+
+            printf("latitude: %d, longitude: %d, altitude: %d\n",
+                     feedback_data.latitude, 
+                     feedback_data.longitude, 
+                     feedback_data.relative_height);
+
+            break;
+        }
+
+        // case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
+        // {
+        //     mavlink_gps_global_origin_t gps_global_origin;
+        //     mavlink_msg_gps_global_origin_decode(&message, &gps_global_origin);
+
+        //     feedback_data.latitude = gps_global_origin.latitude;
+        //     feedback_data.longitude = gps_global_origin.longitude;
+        //     feedback_data.relative_height = gps_global_origin.altitude;
+
+        //     printf("latitude: %d, longitude: %d, altitude: %d\n",
+        //             feedback_data.latitude, 
+        //             feedback_data.longitude, 
+        //             feedback_data.relative_height);
+
+        //     break;
+        // }
+
+        case MAVLINK_MSG_ID_AUTOPILOT_VERSION:
+        {
+            mavlink_autopilot_version_t autopilot_version;
+
+            mavlink_msg_autopilot_version_decode(&message, &autopilot_version);
+            feedback_data.flight_control_version = 0x10;
+            feedback_data.hw_version = 0x32; //临时添加
+            printf("flight_control_version: %d, hw_version: %d\n", feedback_data.flight_control_version, feedback_data.hw_version);
+
+            break;
+        }
+        
+        case MAVLINK_MSG_ID_MISSION_COUNT:
+        {
+            mavlink_message_t       messageOut;
+            
+            printf("MAVLINK_MSG_ID_MISSION_COUNT\n");
+            mavlink_msg_mission_count_decode(&message, &mission_count);
+            
+            for (int i = 0; i < mission_count.count; i++) {
+                mavlink_msg_mission_request_int_pack_chan(mission_count.target_system,
+                                                          0,
+                                                          0,
+                                                          &messageOut,
+                                                          message.sysid,
+                                                          mission_count.target_component,
+                                                          i,
+                                                          MAV_MISSION_TYPE_MISSION);
+                port->write_message(messageOut);                                           
+            }
+
+            break;
+        }
+
+        case MAVLINK_MSG_ID_MISSION_ITEM_INT:
+        {
+            mavlink_mission_item_t mission_item;
+            mavlink_message_t       messageOut;
+
+            mavlink_msg_mission_item_decode(&message, &mission_item);
+            printf("seq: %d, x: %d, y: %d, z: %d,\n", mission_item.seq, mission_item.x, mission_item.y, mission_item.z);
+
+            if (mission_item.seq == mission_count.count - 1) {
+                mavlink_msg_mission_ack_pack_chan(mission_item.target_system,
+                                                  0,
+                                                  0,
+                                                  &messageOut,
+                                                  message.sysid,
+                                                  mission_item.target_component,
+                                                  0,
+                                                  MAV_MISSION_TYPE_MISSION);
+                port->write_message(messageOut);
+            }
+
+            break;
+        }
+
+        case MAVLINK_MSG_ID_MISSION_REQUEST:
+        {
+            printf("MAVLINK_MSG_ID_MISSION_REQUEST\n");
+        }
+        
+        case MAVLINK_MSG_ID_MISSION_REQUEST_INT:
+        {
+            printf("MAVLINK_MSG_ID_MISSION_REQUEST_INT\n");
+            mavlink_message_t       messageOut;
+            mavlink_mission_request_int_t missionRequest;
+
+            mavlink_msg_mission_request_int_decode(&message, &missionRequest);
+            printf("message.sysid: %d, target_system: %d, seq: %d\n", 
+                    message.sysid,
+                    missionRequest.target_system,
+                    missionRequest.seq);
+            mavlink_msg_mission_item_int_pack_chan(missionRequest.target_system,
+                                                   0,
+                                                   0,
+                                                   &messageOut,
+                                                   message.sysid,
+                                                   missionRequest.target_component,
+                                                   missionRequest.seq,
+                                                   MAV_FRAME_GLOBAL_RELATIVE_ALT,
+                                                   MAV_CMD_NAV_WAYPOINT,
+                                                   missionRequest.seq == 0,
+                                                   1,
+                                                   0,
+                                                   0,
+                                                   0,
+                                                   0,
+                                                   400926989,
+                                                   1164304554,
+                                                   500,
+                                                   MAV_MISSION_TYPE_MISSION);
+            port->write_message(messageOut);
+
+            break;
+        }
+
+        case MAVLINK_MSG_ID_MISSION_ACK:
+        {
+            printf("MAVLINK_MSG_ID_MISSION_ACK\n");
+            mavlink_mission_ack_t missionAck;
+            
+            mavlink_msg_mission_ack_decode(&message, &missionAck);
+
+            // printf("%d, %d, %d, %d\n", missionAck.target_system, missionAck.target_component, missionAck.type, missionAck.mission_type);
+            break;
+        }
 
         default :
         {
@@ -132,40 +370,311 @@ void ProtocolConversion::bz_telemetry_decode(char *buff, int len)
     // port->dest_port->write_port(buff, len);
 }
 
+void ProtocolConversion::virtual_rocker_mode(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************virtual_rocker_mode**************************************\n");
+
+    mavlink_message_t msg;
+    manual_mode_t manual_mode;
+
+    memcpy((uint8_t*)&manual_mode.enable, (uint8_t*)&bz_message.pyload[0], sizeof(manual_mode));
+
+    if (manual_mode.enable == 0x01) {
+        set_flight_mode(bz_message, "Position");
+        // Incoming values are in the range -1:1
+        int16_t axesScaling =         1000/100;
+        int16_t newRollCommand =      manual_mode.forward_speed * axesScaling;
+        int16_t newPitchCommand  =    manual_mode.level_speed * axesScaling;    // Joystick data is reverse of mavlink values
+        int16_t newYawCommand    =    manual_mode.uav_head_angle;
+        int16_t newThrustCommand =    manual_mode.vtol_speed * axesScaling;
+
+        mavlink_msg_manual_control_pack_chan(bz_message.sender_sysid,
+                                             0,
+                                             0,
+                                             &msg,
+                                             bz_message.receiver_sysid,
+                                             static_cast<int16_t>(newPitchCommand),
+                                             static_cast<int16_t>(newRollCommand),
+                                             static_cast<int16_t>(newThrustCommand),
+                                             static_cast<int16_t>(newYawCommand),
+                                             0);
+
+        dest_port->write_message(msg);
+        printf("%d, %d, %d, %d\n", newRollCommand, newPitchCommand, newYawCommand, newThrustCommand);
+
+    }
+
+
+
+}
+void ProtocolConversion::autonomous_takeoff(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************autonomous_takeoff**************************************\n");
+
+    mavlink_message_t  msg;
+    mavlink_command_int_t  cmd;
+    autonomous_takeoff_t mode;
+
+    memcpy((uint8_t*)&mode.enable, (uint8_t*)&bz_message.pyload[0], sizeof(mode));
+    if (mode.enable == 0x01) {
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.target_system = bz_message.receiver_sysid;
+        cmd.target_component = 0;
+        cmd.command = MAV_CMD_NAV_TAKEOFF;
+        cmd.frame = MAV_FRAME_GLOBAL;
+        cmd.param1 = -1;
+        cmd.param2 = 0;
+        cmd.param3 = 0;
+        cmd.param4 = NAN;
+        cmd.x = NAN;
+        cmd.y = NAN;
+        cmd.z = mode.height / 10;
+
+
+        mavlink_msg_command_int_encode_chan(bz_message.sender_sysid,
+                                            0,
+                                            0,
+                                            &msg,
+                                            &cmd);
+        dest_port->write_message(msg);
+        printf("yaw: %f, lat: %d, lon: %d, alt: %f\n", cmd.param4, cmd.x, cmd.y, cmd.z);
+    }
+
+}
+void ProtocolConversion::autonomous_return(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************autonomous_return**************************************\n");
+
+    mavlink_message_t  msg;
+    mavlink_command_int_t  cmd;
+
+    autonomous_return_t mode;
+    memcpy((uint8_t*)&mode.enable, (uint8_t*)&bz_message.pyload[0], sizeof(mode));
+
+    if (mode.enable == 0x01) {
+        bool flightModeChanged = false;
+        set_flight_mode(bz_message, "Return");
+    }
+
+}
+void ProtocolConversion::autonomous_cruise(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************autonomous_cruise**************************************\n");
+
+    route_flight_t route_flight;
+    memcpy((uint8_t*)&route_flight.route_switch, (uint8_t*)&bz_message.pyload[0], sizeof(route_flight));
+
+    if (route_flight.start_mode == 0) {
+        set_flight_mode(bz_message, "Mission");
+    } else {
+        printf("not support start mode\n");
+    }
+
+}
 
 void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_message)
 {
-    mavlink_message_t message;
 
-    uint8_t     base_mode;
-    uint32_t    custom_mode;
-    string flight_mode = "Stabilized";
+    printf("***************************************autonomous_flight_and_steering**************************************\n");
 
-    if (setFlightMode(flight_mode, &base_mode, &custom_mode)) {
-        uint8_t newBaseMode = _base_mode & ~MAV_MODE_FLAG_DECODE_POSITION_CUSTOM_MODE;
-        newBaseMode |= base_mode;
+    mavlink_message_t msg;
+    autonomous_flight_t manual_mode;
 
-        printf("***************************************autonomous_flight_and_steering**************************************\n");
+    memcpy((uint8_t*)&manual_mode.act, (uint8_t*)&bz_message.pyload[0], sizeof(manual_mode));
 
-        mavlink_msg_set_mode_pack_chan(bz_message.sender_sysid,
-                                    0,
-                                    0,
-                                    &message,
-                                    bz_message.receiver_sysid,
-                                    newBaseMode,
-                                    custom_mode);
-        dest_port->write_message(message);
-        printf("newBaseMode: 0x%02x\n", newBaseMode);
-        printf("custom_mode: 0x%08x\n", custom_mode);
-        print_mavlink(message);
-    } else {
-        cout << "FirmwarePlugin::setFlightMode failed, flightMode:" << flight_mode << endl;
+    int16_t axesScaling =         100;
+    int16_t angleScaling =        10;
+    int16_t newRollCommand =      0;
+    int16_t newPitchCommand  =    0;
+    int16_t newYawCommand    =    0;
+    int16_t newThrustCommand =    0;
+
+    // set_flight_mode(bz_message, "Stabilized");
+
+    if (manual_mode.act == 0x01) {
+        newPitchCommand = manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x02) {
+        newPitchCommand = -1 * manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x03) {
+        newRollCommand = -1 * manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x04) {
+        newRollCommand = manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x05) {
+        newThrustCommand = manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x06) {
+        newThrustCommand = -1 * manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x07) {
+        newYawCommand = -1 * manual_mode.virt_joy;
+    } else if (manual_mode.act == 0x08) {
+        newYawCommand = manual_mode.virt_joy;
     }
+
+    mavlink_msg_manual_control_pack_chan(bz_message.sender_sysid,
+                                            0,
+                                            0,
+                                            &msg,
+                                            bz_message.receiver_sysid,
+                                            static_cast<int16_t>(newPitchCommand),
+                                            static_cast<int16_t>(newRollCommand),
+                                            static_cast<int16_t>(newThrustCommand),
+                                            static_cast<int16_t>(newYawCommand),
+                                            0);
+
+    dest_port->write_message(msg);
+    printf("%d, %d, %d, %d\n", newRollCommand, newPitchCommand, newYawCommand, newThrustCommand);
+
+}
+
+void ProtocolConversion::autonomous_obstacle_avoidance(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************autonomous_obstacle_avoidance**************************************\n");
+}
+void ProtocolConversion::route_setting(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************route_setting**************************************\n");
+    mavlink_message_t       message;
+    route_setting_t route;
+    double latitude;
+    double longtitude;
+    double altitude;
+
+    memcpy((uint8_t*)&route.upload, (uint8_t*)&bz_message.pyload[0], sizeof(route));
+    latitude = (double)(route.latitude / 10e6);
+    longtitude = (double)(route.longitude / 10e6);
+    altitude = (double)(route.relative_height / 10);
+
+    switch (route.route_type) {
+        case SINGLE_ROUTE:
+            printf("upload: %d, waypoint_numbers: %d, waypoint_id: %d, route_number: %d, \
+                    route_type: %d, waypoint_type: %d, stay_time: %d, speed: %d\n", \
+                    route.upload, route.waypoint_numbers, route.waypoint_id, route.route_number, 
+                    route.route_type, route.waypoint_type, route.stay_time, route.relative_ground_speed);
+            printf("lat: %d, lon: %d, alt: %d\n", route.latitude, route.longitude, route.relative_height);
+            mavlink_msg_mission_count_pack_chan(bz_message.sender_sysid,
+                                                0,
+                                                0,
+                                                &message,
+                                                bz_message.receiver_sysid,
+                                                MAV_COMP_ID_AUTOPILOT1,
+                                                route.waypoint_id,
+                                                route.route_type);
+            if (route.waypoint_id == route.waypoint_numbers - 1) {
+                dest_port->write_message(message);
+            }
+
+            break;
+        
+        case TAKEOFF_ROUTE:
+            break;
+        
+        case LAND_ROUTE:
+            break;
+        
+        case CRUISE_ROUTE:
+            break;
+        
+        case LEVEL_ROUTE:
+            break;
+
+        case HOMEWARD_ROUTE:
+            break;
+
+        case EMERGENCY_ROUTE:
+
+            break;
+
+        default:
+        
+            break; 
+    }
+}
+void ProtocolConversion::route_flight_instructions(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************route_flight_instructions**************************************\n");
+}
+void ProtocolConversion::geographic_coordinage_guidance(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************geographic_coordinage_guidance**************************************\n");
+}
+void ProtocolConversion::route_downlaod_switch(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************route_downlaod_switch**************************************\n");
+    mavlink_message_t  message;
+    route_download_t download;
+    memcpy((uint8_t*)&download.route_number, (uint8_t*)&bz_message.pyload[0], sizeof(download));
+
+    mavlink_msg_mission_request_list_pack_chan(bz_message.sender_sysid,
+                                               0,
+                                               0,
+                                               &message,
+                                               bz_message.receiver_sysid,
+                                               MAV_COMP_ID_AUTOPILOT1,
+                                               MAV_MISSION_TYPE_MISSION);
+
+    dest_port->write_message(message);
+
+}
+void ProtocolConversion::autonomous_precision_land(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************autonomous_precision_land**************************************\n");
+
+    mavlink_message_t  msg;
+    mavlink_command_int_t  cmd;
+    autonomous_takeoff_t mode;
+
+    memcpy((uint8_t*)&mode.enable, (uint8_t*)&bz_message.pyload[0], sizeof(mode));
+    if (mode.enable == 0x01) {
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.target_system = bz_message.receiver_sysid;
+        cmd.target_component = 0;
+        cmd.command = MAV_CMD_NAV_LAND;
+        cmd.frame = MAV_FRAME_GLOBAL;
+        cmd.param1 = -1;
+        cmd.param2 = 0;
+        cmd.param3 = 0;
+        cmd.param4 = NAN;
+        cmd.x = NAN;
+        cmd.y = NAN;
+        cmd.z = mode.height / 10;
+
+
+        mavlink_msg_command_int_encode_chan(bz_message.sender_sysid,
+                                            0,
+                                            0,
+                                            &msg,
+                                            &cmd);
+        dest_port->write_message(msg);
+    }
+
+}
+void ProtocolConversion::route_download_reply(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************route_download_reply**************************************\n");
 }
 
 void ProtocolConversion::command_feedback_response(bz_message_uav_up_t bz_message)
 {
     command_feedback_response_t command_feedback_response;
+	bz_message_ground_down_t message = {0};
+    char buff[300];
+	unsigned len;
+
+    command_feedback_response.reciver_status = 0x01;
+    command_feedback_response.cmd_id = (bz_message.cmd0 << 8) | bz_message.cmd1;
+    command_feedback_response.sender_sysid = bz_message.sender_sysid;
+    command_feedback_response.reciver_sysid = bz_message.receiver_sysid;
+    command_feedback_response.reciver_time = feedback_data.startup_time;
+    command_feedback_response.reciver_status = 0x01;
+
+
+    uav_command_feedback(&message, sender_sysid, 10, command_feedback_response);
+    ground_down_t_to_qbyte(buff, 
+                           &len,
+                           &message);
+    for (int i = 0; i < 3; i++) {
+        port->write_bz_message(buff, len);
+    }
+
     
 }
 
@@ -386,4 +895,47 @@ void ProtocolConversion::print_mavlink(mavlink_message_t message)
     printf("message.compid: 0x%02x\n", message.compid);
     printf("message.msgid: %d\n", message.msgid);
     printf("message.checksum: 0x%04x\n", message.checksum);
+}
+
+void ProtocolConversion::set_flight_mode(bz_message_uav_up_t bz_message, string flight_mode)
+{
+    mavlink_message_t message;
+
+    uint8_t     base_mode;
+    uint32_t    custom_mode;
+
+    if (setFlightMode(flight_mode, &base_mode, &custom_mode)) {
+        uint8_t newBaseMode = _base_mode & ~MAV_MODE_FLAG_DECODE_POSITION_CUSTOM_MODE;
+        newBaseMode |= base_mode;
+
+        mavlink_msg_set_mode_pack_chan(bz_message.sender_sysid,
+                                    0,
+                                    0,
+                                    &message,
+                                    bz_message.receiver_sysid,
+                                    newBaseMode,
+                                    custom_mode);
+        dest_port->write_message(message);
+    } else {
+        cout << "FirmwarePlugin::setFlightMode failed, flightMode:" << flight_mode << endl;
+    }
+}
+
+void ProtocolConversion::guidedModeTakeoff(bz_message_uav_up_t bz_message, string flight_mode)
+{
+
+}
+
+void ProtocolConversion::sendMavCommand(int compId, MAV_CMD command, bool showError, float param1, float param2, float param3, float param4, float param5, float param6, float param7)
+{
+
+}
+
+void ProtocolConversion::uav_command_feedback(bz_message_ground_down_t *msg, uint8_t sender_sysid, uint8_t receiver_sysid, command_feedback_response_t feedback_data)
+{
+    memcpy((uint8_t*)&msg->pyload[0], (uint8_t*)&feedback_data.reciver_status, 63-9+1);
+
+    bz_finalize_message_encode(msg, BZ_GROUND_DOWNSTREAM_LEN, sender_sysid, receiver_sysid, DRONE_PLATFORM_STATUS_FEEDBACK_DATA);
+
+    return;
 }

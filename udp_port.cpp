@@ -412,7 +412,7 @@ void UDP_Port::start(const char *host_ip_, int host_port_)
     }
 
     /* 将本机加入多播组 */
-    multicast_group.imr_multiaddr.s_addr = inet_addr(host_ip_); // 多播组需要使用D类IP地址，其范围为224.0.0.0-239.255.255.255
+    multicast_group.imr_multiaddr.s_addr = inet_addr(host_ip); // 多播组需要使用D类IP地址，其范围为224.0.0.0-239.255.255.255
     multicast_group.imr_interface.s_addr = INADDR_ANY;         // 加入多播组的主机地址信息
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *) &addr, sizeof(addr));
 

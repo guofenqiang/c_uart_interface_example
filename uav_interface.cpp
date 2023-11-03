@@ -5,7 +5,6 @@ UAV_Interface::UAV_Interface(Generic_Port *port_)
 {
     _port = port_;
     _ptconv = new ProtocolConversion(_port);
-	Init_Timer0();
 }
 
 UAV_Interface::UAV_Interface(Generic_Port *port_, Generic_Port *dest_port_)
@@ -13,7 +12,6 @@ UAV_Interface::UAV_Interface(Generic_Port *port_, Generic_Port *dest_port_)
     _port = port_;
     _dest_port = dest_port_;
     _ptconv = new ProtocolConversion(_port, dest_port_);
-	Init_Timer0();   
 }
 
 
@@ -22,6 +20,20 @@ UAV_Interface::UAV_Interface(Generic_Port *port_, Generic_Port *dest_port_)
 void UAV_Interface::start()
 {
 	read_start();
+
+
+	if (protocol_mode == 1) {
+		while ( not sysid )
+		{
+			usleep(500000); // check at 2Hz
+		}
+
+		printf("GOT VEHICLE SYSTEM ID: %i\n", sysid );
+		printf("GOT AUTOPILOT COMPONENT ID: %i\n", compid);
+	}
+
+
+
 	write_start();
 }
 
@@ -44,12 +56,7 @@ int UAV_Interface::read_port()
 		total_bytes = 0;
 		if (protocol_mode == 0) {
             success = _port->read_bz_message(rx_buff, &total_bytes);
-            if (success) {				
-				if (_flag == 0) {
-					timer.start(1000000);
-					_flag = 1;
-				}
-
+            if (success) {					
 				if (compareArrays(rx_buff, rx_buff_last, total_bytes)) {
 					continue;
 				} 
@@ -87,6 +94,8 @@ int UAV_Interface::read_port()
 			/*直接调用下面的也可以解析*/
 			success = _port->read_message(message);
 			if (success) {
+				sysid = message.sysid;
+				compid = message.compid;
 				_ptconv->handle_message(message);
 			}
 		} else {
@@ -119,6 +128,10 @@ int UAV_Interface::read_start()
 	pthread_t read_tid;
 	int result;
 
+	if (protocol_mode == 0) {
+		// Init_Timer0(); //目的时过滤重复帧：bz遥控指令针对每次数据都会连续发送3帧，帧间时间≤10ms
+	}
+
 	result = pthread_create( &read_tid, NULL, serial_read, this);
 	if ( result ) throw result;
 }
@@ -128,7 +141,7 @@ void UAV_Interface::platform_feedback()
 	bz_message_ground_down_t bz_message = {0};
 
 	_ptconv->uav_platform_feedback(&bz_message, 
-								   _ptconv->sender_sysid, 
+								   sysid, 
 								   10, 
 								   _ptconv->feedback_data);
 	_ptconv->ground_down_t_to_qbyte(_ptconv->send_buff, 
@@ -186,11 +199,11 @@ void UAV_Interface::timer_handler()
 {
 	static int count = 0;
 	_flag = 0;
-
+	// timer.start(1000000); //start 应该初始化一次，过多cpu会发烫
 	while (true) {
 		if (timer.wait()) {
 			// 执行定时任务
-			if (count == 1000) {
+			if (count >= 10) {
 				count = 0;
 				exec_feedback_handle();
 			}

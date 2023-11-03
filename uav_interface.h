@@ -42,6 +42,9 @@ public:
 	uint8_t _flag;
 	char rx_buff_last[1024];
 
+	int sysid;
+	int compid;
+
 private:
     Generic_Port *_port;
     Generic_Port *_dest_port;

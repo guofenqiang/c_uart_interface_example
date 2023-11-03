@@ -21,7 +21,20 @@ public:
     void bz_telemetry_decode(char *buff, int len);
     void handle_message(mavlink_message_t &message);
 
+    void virtual_rocker_mode(bz_message_uav_up_t bz_message);
+    void autonomous_takeoff(bz_message_uav_up_t bz_message);
+    void autonomous_return(bz_message_uav_up_t bz_message);
+    void autonomous_cruise(bz_message_uav_up_t bz_message);
     void autonomous_flight_and_steering(bz_message_uav_up_t bz_message);
+    void autonomous_obstacle_avoidance(bz_message_uav_up_t bz_message);
+    void route_setting(bz_message_uav_up_t bz_message);
+    void route_flight_instructions(bz_message_uav_up_t bz_message);
+    void geographic_coordinage_guidance(bz_message_uav_up_t bz_message);
+    void route_downlaod_switch(bz_message_uav_up_t bz_message);
+    void autonomous_precision_land(bz_message_uav_up_t bz_message);
+    void route_download_reply(bz_message_uav_up_t bz_message);
+
+
     void command_feedback_response(bz_message_uav_up_t bz_message);
     void invalid_teleconrol_cmd(bz_message_uav_up_t bz_message);
 
@@ -57,6 +70,15 @@ public:
     //需要发送的数据
     char send_buff[300];
 	unsigned send_len;
+    drone_platform_status_feedback_data_t feedback_data = {0};
+    uint8_t sender_sysid;
+    uint8_t receiver_sysid;
+
+    void set_flight_mode(bz_message_uav_up_t bz_message, string flight_mode);
+    void guidedModeTakeoff(bz_message_uav_up_t bz_message, string flight_mode);
+    void sendMavCommand(int compId, MAV_CMD command, bool showError, float param1, float param2, float param3, float param4, float param5, float param6, float param7);
+    void uav_command_feedback(bz_message_ground_down_t *msg, uint8_t sender_sysid, uint8_t receiver_sysid, command_feedback_response_t feedback_data);
+
 
 private:
 
