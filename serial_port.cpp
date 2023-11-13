@@ -520,7 +520,7 @@ int Serial_Port::read_bz_message(char *rx_buff, uint8_t *len)
     // char rx_buff[BUFF_SIZE];
 
 	while (total_bytes < BZ_GROUND_UPSTREAM_LEN) {
-		int bytes_read = read(fd, rx_buff + total_bytes, BUFF_SIZE - total_bytes);
+		int bytes_read = read(fd, rx_buff + total_bytes, BZ_GROUND_UPSTREAM_LEN - total_bytes);
 		if (bytes_read <= 0) {
 			break;
 		}
