@@ -2,6 +2,7 @@
 #include "BZConv.h"
 #include "CRCCheck.h"
 #include <iostream>
+#include "global_v.h"
 
 
 ProtocolConversion::ProtocolConversion(Generic_Port *port_)
@@ -209,15 +210,15 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
 
             feedback_data.latitude = gps_raw_int.lat;
             feedback_data.longitude = gps_raw_int.lon;
-            feedback_data.relative_height = gps_raw_int.alt / 100000;
+            amsl_alt = gps_raw_int.alt;
 
             // feedback_data.latitude = 300181923;
             // feedback_data.longitude = 1199695779;
 
-            printf("latitude: %d, longitude: %d, altitude: %d\n",
-                     feedback_data.latitude, 
-                     feedback_data.longitude, 
-                     feedback_data.relative_height);
+            // printf("latitude: %d, longitude: %d, altitude(mm): %d\n",
+            //          feedback_data.latitude, 
+            //          feedback_data.longitude, 
+            //          amsl_alt);
 
             break;
         }
@@ -347,6 +348,13 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             break;
         }
 
+        case MAVLINK_MSG_ID_ALTITUDE:
+        {
+            mavlink_altitude_t alt;
+            mavlink_msg_altitude_decode(&message, &alt);
+            feedback_data.relative_height = alt.altitude_relative * 10;
+        } 
+
         default :
         {
             // printf("msgid: %d\n", message.msgid);
@@ -414,6 +422,9 @@ void ProtocolConversion::autonomous_takeoff(bz_message_uav_up_t bz_message)
     mavlink_message_t  msg;
     mavlink_command_int_t  cmd;
     autonomous_takeoff_t mode;
+    sender_sysid = bz_message.sender_sysid;
+    receiver_sysid = bz_message.receiver_sysid;
+    arm_disarm(true);
 
     memcpy((uint8_t*)&mode.enable, (uint8_t*)&bz_message.pyload[0], sizeof(mode));
     if (mode.enable == 0x01) {
@@ -426,10 +437,9 @@ void ProtocolConversion::autonomous_takeoff(bz_message_uav_up_t bz_message)
         cmd.param2 = 0;
         cmd.param3 = 0;
         cmd.param4 = NAN;
-        cmd.x = NAN;
-        cmd.y = NAN;
-        cmd.z = mode.height / 10;
-
+        cmd.x = feedback_data.latitude;
+        cmd.y = feedback_data.longitude;
+        cmd.z = (float)mode.height / 10 + amsl_alt / 1000;
 
         mavlink_msg_command_int_encode_chan(bz_message.sender_sysid,
                                             0,
@@ -938,4 +948,37 @@ void ProtocolConversion::uav_command_feedback(bz_message_ground_down_t *msg, uin
     bz_finalize_message_encode(msg, BZ_GROUND_DOWNSTREAM_LEN, sender_sysid, receiver_sysid, DRONE_PLATFORM_STATUS_FEEDBACK_DATA);
 
     return;
+}
+
+int ProtocolConversion::arm_disarm( bool flag )
+{
+    uint8_t component_id = 0;
+    uint8_t target_compnent = 0;
+	if(flag)
+	{
+		printf("ARM ROTORS\n");
+	}
+	else
+	{
+		printf("DISARM ROTORS\n");
+	}
+
+	// Prepare command for off-board mode
+	mavlink_command_long_t com = { 0 };
+	com.target_system    = receiver_sysid;
+	com.target_component = target_compnent;
+	com.command          = MAV_CMD_COMPONENT_ARM_DISARM;
+	com.confirmation     = true;
+	com.param1           = (float) flag;
+	com.param2           = 21196;
+
+	// Encode
+	mavlink_message_t message;
+	mavlink_msg_command_long_encode(sender_sysid, component_id, &message, &com);
+
+	// Send the message
+	int len = dest_port->write_message(message);
+
+	// Done!
+	return len;
 }

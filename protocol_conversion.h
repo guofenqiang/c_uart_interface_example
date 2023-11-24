@@ -70,7 +70,8 @@ public:
     //需要发送的数据
     char send_buff[300];
 	unsigned send_len;
-    drone_platform_status_feedback_data_t feedback_data = {0};
+    static drone_platform_status_feedback_data_t feedback_data;
+    static int32_t amsl_alt;
     uint8_t sender_sysid;
     uint8_t receiver_sysid;
 
@@ -79,6 +80,7 @@ public:
     void sendMavCommand(int compId, MAV_CMD command, bool showError, float param1, float param2, float param3, float param4, float param5, float param6, float param7);
     void uav_command_feedback(bz_message_ground_down_t *msg, uint8_t sender_sysid, uint8_t receiver_sysid, command_feedback_response_t feedback_data);
 
+    int arm_disarm( bool flag );
 
 private:
 
