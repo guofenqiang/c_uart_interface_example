@@ -307,12 +307,22 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             printf("MAVLINK_MSG_ID_MISSION_REQUEST_INT\n");
             mavlink_message_t       messageOut;
             mavlink_mission_request_int_t missionRequest;
+            route_setting_t route;
 
             mavlink_msg_mission_request_int_decode(&message, &missionRequest);
             printf("message.sysid: %d, target_system: %d, seq: %d\n", 
                     message.sysid,
                     missionRequest.target_system,
                     missionRequest.seq);
+            int i = 0;
+            for (route_setting_t element: _routeList){
+                if (i == missionRequest.seq) {
+                    route = element;
+                    break;
+                }
+                ++i;
+            }
+
             mavlink_msg_mission_item_int_pack_chan(missionRequest.target_system,
                                                    0,
                                                    0,
@@ -328,9 +338,9 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
                                                    0,
                                                    0,
                                                    0,
-                                                   400926989,
-                                                   1164304554,
-                                                   500,
+                                                   route.latitude,
+                                                   route.longitude,
+                                                   route.relative_height / 10,
                                                    MAV_MISSION_TYPE_MISSION);
             port->write_message(messageOut);
 
@@ -547,6 +557,7 @@ void ProtocolConversion::route_setting(bz_message_uav_up_t bz_message)
     double latitude;
     double longtitude;
     double altitude;
+    static int currentMissionIndex = 0;
 
     memcpy((uint8_t*)&route.upload, (uint8_t*)&bz_message.pyload[0], sizeof(route));
     latitude = (double)(route.latitude / 10e6);
@@ -560,16 +571,36 @@ void ProtocolConversion::route_setting(bz_message_uav_up_t bz_message)
                     route.upload, route.waypoint_numbers, route.waypoint_id, route.route_number, 
                     route.route_type, route.waypoint_type, route.stay_time, route.relative_ground_speed);
             printf("lat: %d, lon: %d, alt: %d\n", route.latitude, route.longitude, route.relative_height);
-            mavlink_msg_mission_count_pack_chan(bz_message.sender_sysid,
-                                                0,
-                                                0,
-                                                &message,
-                                                bz_message.receiver_sysid,
-                                                MAV_COMP_ID_AUTOPILOT1,
-                                                route.waypoint_id,
-                                                route.route_type);
+            // 清除链表里保存的航线记录
+            if (currentMissionIndex == 0) {
+                _routeList.clear();
+            }
+            currentMissionIndex++;
+
+            _routeList.push_back(route);
             if (route.waypoint_id == route.waypoint_numbers - 1) {
+                // 清除飞机上的航线
+                mavlink_msg_mission_clear_all_pack_chan(bz_message.sender_sysid,
+                                                        0,
+                                                        0,
+                                                        &message,
+                                                        bz_message.receiver_sysid,
+                                                        MAV_COMP_ID_AUTOPILOT1,
+                                                        route.route_type);
                 dest_port->write_message(message);
+
+                // 请求发送当前绘制的航线个数，具体参照Mission Protocol
+                mavlink_msg_mission_count_pack_chan(bz_message.sender_sysid,
+                                    0,
+                                    0,
+                                    &message,
+                                    bz_message.receiver_sysid,
+                                    MAV_COMP_ID_AUTOPILOT1,
+                                    route.waypoint_numbers,
+                                    route.route_type);
+                dest_port->write_message(message);
+
+                currentMissionIndex = 0;
             }
 
             break;

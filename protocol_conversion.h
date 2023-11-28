@@ -71,6 +71,7 @@ public:
     char send_buff[300];
 	unsigned send_len;
     static drone_platform_status_feedback_data_t feedback_data;
+    static list<route_setting_t> _routeList;
     static int32_t amsl_alt;
     uint8_t sender_sysid;
     uint8_t receiver_sysid;
