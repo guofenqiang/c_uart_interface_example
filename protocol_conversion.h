@@ -75,6 +75,8 @@ public:
     static int32_t amsl_alt;
     uint8_t sender_sysid;
     uint8_t receiver_sysid;
+    uint8_t receiver_status;
+    uint8_t cmd_status;
 
     void set_flight_mode(bz_message_uav_up_t bz_message, string flight_mode);
     void guidedModeTakeoff(bz_message_uav_up_t bz_message, string flight_mode);

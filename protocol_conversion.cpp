@@ -579,6 +579,15 @@ void ProtocolConversion::route_setting(bz_message_uav_up_t bz_message)
 
             _routeList.push_back(route);
             if (route.waypoint_id == route.waypoint_numbers - 1) {
+                if (_routeList.size() != route.waypoint_numbers) {
+                    printf("_routeList error: %d\n", _routeList.size());
+                    _routeList.clear();
+                    currentMissionIndex = 0;
+                    receiver_status = 0x02;
+                    cmd_status = 0x02;
+                    return;    
+                }
+
                 // 清除飞机上的航线
                 mavlink_msg_mission_clear_all_pack_chan(bz_message.sender_sysid,
                                                         0,
@@ -628,6 +637,9 @@ void ProtocolConversion::route_setting(bz_message_uav_up_t bz_message)
         
             break; 
     }
+
+    receiver_status = 0x01;
+    cmd_status = 0x01;
 }
 void ProtocolConversion::route_flight_instructions(bz_message_uav_up_t bz_message)
 {
@@ -700,15 +712,15 @@ void ProtocolConversion::command_feedback_response(bz_message_uav_up_t bz_messag
     char buff[300];
 	unsigned len;
 
-    command_feedback_response.reciver_status = 0x01;
+    command_feedback_response.reciver_status = receiver_status;
     command_feedback_response.cmd_id = (bz_message.cmd0 << 8) | bz_message.cmd1;
     command_feedback_response.sender_sysid = bz_message.sender_sysid;
     command_feedback_response.reciver_sysid = bz_message.receiver_sysid;
     command_feedback_response.reciver_time = feedback_data.startup_time;
-    command_feedback_response.reciver_status = 0x01;
+    command_feedback_response.cmd_status = cmd_status;
 
 
-    uav_command_feedback(&message, sender_sysid, 10, command_feedback_response);
+    uav_command_feedback(&message, bz_message.sender_sysid, bz_message.receiver_sysid, command_feedback_response);
     ground_down_t_to_qbyte(buff, 
                            &len,
                            &message);
