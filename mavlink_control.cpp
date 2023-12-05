@@ -446,13 +446,13 @@ quit_handler( int sig )
 
 int top1(int argc, char **argv)
 {
-	char uart_name1[] = "/dev/ttyS0"; //protocol <---> bz
+	char uart_name1[] = "/dev/ttyUSB0"; //protocol <---> bz
 	int baudrate1 = 230400;
 
-	char uart_name2[] = "/dev/ttyS6"; //protocol <---> uav
+	char uart_name2[] = "/dev/ttyUSB1"; //protocol <---> uav
 	int baudrate2 = 57600;
 
-	bool use_udp = true;
+	bool use_udp = false;
 	char *host_ip = (char*)"224.0.0.3"; //udp组播客户端地址
 	int host_port = 7044; //udp组播客户端端口
 	char *peer_ip = (char*)"224.0.0.2"; // udp组播客户端地址

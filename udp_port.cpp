@@ -383,7 +383,7 @@ _write_port(char *buf, unsigned len)
 
 void UDP_Port::start(const char *host_ip_, int host_port_)
 {
-#define IF_NAME "eth0" // 网口名称
+#define IF_NAME "enP3p49s0" // 网口名称
 
 	/*****************************************
 	 * 添加接收方向的socket
