@@ -3,6 +3,10 @@
 #include "CRCCheck.h"
 #include <iostream>
 #include "global_v.h"
+#include <iostream>
+#include <chrono>
+#include <thread>
+using namespace std;
 
 
 ProtocolConversion::ProtocolConversion(Generic_Port *port_)
@@ -49,7 +53,7 @@ void ProtocolConversion::bz_telecontrol_decode(char *buff, int len)
     bz_message_uav_up_t bz_message = {};
 
     memcpy((uint8_t *)&bz_message.frame_header1, (uint8_t *)buff, sizeof(bz_message));
-
+    receiver_sysid = bz_message.sender_sysid;
     switch (bz_message.cmd0 << 8 | bz_message.cmd1) {
         case MANUAL_MODE:
         {
@@ -80,6 +84,12 @@ void ProtocolConversion::bz_telecontrol_decode(char *buff, int len)
             autonomous_flight_and_steering(bz_message);
             break;
         }
+        
+        case ROUTE_INQUIRY:
+        {
+            route_inquiry(bz_message);
+            break;
+        }
 
         case ROUTE_SETTING:
         {
@@ -101,19 +111,14 @@ void ProtocolConversion::bz_telecontrol_decode(char *buff, int len)
 
         case ROUTE_DOWNLOAD_SWITCH:
         {
-            route_downlaod_switch(bz_message);
+            // route_downlaod_switch(bz_message);
+            printf("******************************not supported route_downlaod_switch**********************************\n");
             break;
         }
 
         case AUTONOMOUS_PRECISION_LAND:
         {
             autonomous_precision_land(bz_message);
-            break;
-        }
-
-        case ROUTE_DOWNLOAD_REPLY:
-        {
-            route_download_reply(bz_message);
             break;
         }
 
@@ -137,18 +142,19 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
     mavlink_attitude_t attitude;
 
     bz_message_ground_down_t bz_message = {0};
-
-    mavlink_mission_count_t mission_count;
+    sender_sysid = message.sysid;
     // printf("msgid: %d\n", message.msgid);
     // Handle Message ID
     switch (message.msgid)
     {
-        sender_sysid = message.msgid;
+
         case MAVLINK_MSG_ID_HEARTBEAT:
         {
             mavlink_msg_heartbeat_decode(&message, &heartbeat);
             _base_mode = heartbeat.base_mode;
             _custom_mode = heartbeat.custom_mode;
+            bool newArmed = heartbeat.base_mode & MAV_MODE_FLAG_DECODE_POSITION_SAFETY;
+            updateArmed(newArmed);
             break;
         }
 
@@ -258,6 +264,7 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             
             printf("MAVLINK_MSG_ID_MISSION_COUNT\n");
             mavlink_msg_mission_count_decode(&message, &mission_count);
+            printf("mission_count: %d\n", mission_count.count);
             
             for (int i = 0; i < mission_count.count; i++) {
                 mavlink_msg_mission_request_int_pack_chan(mission_count.target_system,
@@ -276,13 +283,27 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
 
         case MAVLINK_MSG_ID_MISSION_ITEM_INT:
         {
-            mavlink_mission_item_t mission_item;
+            mavlink_mission_item_int_t mission_item;
             mavlink_message_t       messageOut;
+            static int currentMissionIndex = 0;
 
-            mavlink_msg_mission_item_decode(&message, &mission_item);
-            printf("seq: %d, x: %d, y: %d, z: %d,\n", mission_item.seq, mission_item.x, mission_item.y, mission_item.z);
+            mavlink_msg_mission_item_int_decode(&message, &mission_item);
+            printf("seq: %d, x: %d, y: %d, z: %f,\n", mission_item.seq, mission_item.x, mission_item.y, mission_item.z);
+            
+            // 清除链表里保存的航线记录
+            if (currentMissionIndex == 0) {
+                mission_item_int_list.clear();
+            }
+            currentMissionIndex++;
+            mission_item_int_list.push_back(mission_item);
 
             if (mission_item.seq == mission_count.count - 1) {
+                if (mission_item_int_list.size() != mission_count.count) {
+                    printf("mission_item_int_list error: %d\n", mission_item_int_list.size());
+                    mission_item_int_list.clear();
+                    currentMissionIndex = 0;
+                    return;
+                }
                 mavlink_msg_mission_ack_pack_chan(mission_item.target_system,
                                                   0,
                                                   0,
@@ -292,6 +313,9 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
                                                   0,
                                                   MAV_MISSION_TYPE_MISSION);
                 port->write_message(messageOut);
+                //给指控软件发送航线
+                route_inquiry_reply();
+                currentMissionIndex = 0;
             }
 
             break;
@@ -644,6 +668,15 @@ void ProtocolConversion::route_setting(bz_message_uav_up_t bz_message)
 void ProtocolConversion::route_flight_instructions(bz_message_uav_up_t bz_message)
 {
     printf("***************************************route_flight_instructions**************************************\n");
+    route_flight_t route_flight;
+    memcpy((uint8_t*)&route_flight.route_switch, (uint8_t*)&bz_message.pyload[0], sizeof(route_flight));
+    
+    if (route_flight.start_mode == 0) {
+        startMission(bz_message);
+    } else {
+        printf("not support start mode\n");
+    }
+
 }
 void ProtocolConversion::geographic_coordinage_guidance(bz_message_uav_up_t bz_message)
 {
@@ -655,6 +688,7 @@ void ProtocolConversion::route_downlaod_switch(bz_message_uav_up_t bz_message)
     mavlink_message_t  message;
     route_download_t download;
     memcpy((uint8_t*)&download.route_number, (uint8_t*)&bz_message.pyload[0], sizeof(download));
+    route_download.route_number = download.route_number;
 
     mavlink_msg_mission_request_list_pack_chan(bz_message.sender_sysid,
                                                0,
@@ -667,6 +701,26 @@ void ProtocolConversion::route_downlaod_switch(bz_message_uav_up_t bz_message)
     dest_port->write_message(message);
 
 }
+
+void ProtocolConversion::route_inquiry(bz_message_uav_up_t bz_message)
+{
+    printf("***************************************route_inquiry**************************************\n");
+    mavlink_message_t  message;
+    route_inquiry_t inquiry;
+    memcpy((uint8_t*)&inquiry.route_number, (uint8_t*)&bz_message.pyload[0], sizeof(inquiry));
+    route_download.route_number = inquiry.route_number;
+
+    mavlink_msg_mission_request_list_pack_chan(bz_message.sender_sysid,
+                                               0,
+                                               0,
+                                               &message,
+                                               bz_message.receiver_sysid,
+                                               MAV_COMP_ID_AUTOPILOT1,
+                                               MAV_MISSION_TYPE_MISSION);
+
+    dest_port->write_message(message);    
+}
+
 void ProtocolConversion::autonomous_precision_land(bz_message_uav_up_t bz_message)
 {
     printf("***************************************autonomous_precision_land**************************************\n");
@@ -700,9 +754,43 @@ void ProtocolConversion::autonomous_precision_land(bz_message_uav_up_t bz_messag
     }
 
 }
-void ProtocolConversion::route_download_reply(bz_message_uav_up_t bz_message)
+void ProtocolConversion::route_download_reply()
 {
     printf("***************************************route_download_reply**************************************\n");
+    route_download_reply_t download_reply;
+    mavlink_mission_item_int_t mission_item_int;
+	bz_message_ground_down_t message = {0};
+    char buff[300];
+	unsigned len;
+
+    for (int i = 0; i < mission_count.count; i++) {
+        int j = 0;
+        for (auto info = mission_item_int_list.begin(); info != mission_item_int_list.end(); ++info) {
+            if (j++ == i) {
+                mission_item_int = *info;
+                break;
+            }
+        }
+        download_reply.route_number = route_download.route_number;
+        download_reply.waypoint_longitude = mission_item_int.y;
+        download_reply.waypoint_latitude = mission_item_int.x;
+        download_reply.waypoint_altitude = static_cast<int16_t>(mission_item_int.z) * 10;
+        download_reply.waypoint_numbers = mission_count.count;
+        download_reply.waypoint_id = mission_item_int.seq;
+        download_reply.route_id = route_download.route_number;
+        // download_reply.route_type = 
+        download_reply.waypoint_type = mission_item_int.mission_type;
+        // download_reply.stay_time = 
+        // download_reply.ground_speed = 
+        uav_route_download_feedback(&message, sender_sysid, receiver_sysid, download_reply);
+        ground_down_t_to_qbyte(buff, 
+                            &len,
+                            &message);
+        for (int i = 0; i < 3; i++) {
+            dest_port->write_bz_message(buff, len);
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
+        }
+    }
 }
 
 void ProtocolConversion::command_feedback_response(bz_message_uav_up_t bz_message)
@@ -726,9 +814,48 @@ void ProtocolConversion::command_feedback_response(bz_message_uav_up_t bz_messag
                            &message);
     for (int i = 0; i < 3; i++) {
         port->write_bz_message(buff, len);
+        std::this_thread::sleep_for(std::chrono::microseconds(1));
     }
 
     
+}
+
+void ProtocolConversion::route_inquiry_reply()
+{
+    route_inquiry_reply_t inquiry_reply;
+    mavlink_mission_item_int_t mission_item_int;
+	bz_message_ground_down_t message = {0};
+    char buff[300];
+	unsigned len;
+
+    for (int i = 0; i < mission_count.count; i++) {
+        int j = 0;
+        for (auto info = mission_item_int_list.begin(); info != mission_item_int_list.end(); ++info) {
+            if (j++ == i) {
+                mission_item_int = *info;
+                break;
+            }
+        }
+        inquiry_reply.route_number = route_download.route_number;
+        inquiry_reply.waypoint_longitude = mission_item_int.y;
+        inquiry_reply.waypoint_latitude = mission_item_int.x;
+        inquiry_reply.waypoint_altitude = static_cast<int16_t>(mission_item_int.z) * 10;
+        inquiry_reply.waypoint_numbers = mission_count.count;
+        inquiry_reply.waypoint_id = mission_item_int.seq;
+        inquiry_reply.route_id = route_download.route_number;
+        // inquiry_reply.route_type = 
+        inquiry_reply.waypoint_type = mission_item_int.mission_type;
+        // inquiry_reply.stay_time = 
+        // inquiry_reply.ground_speed = 
+        uav_route_inquiry_feedback(&message, sender_sysid, receiver_sysid, inquiry_reply);
+        ground_down_t_to_qbyte(buff, 
+                            &len,
+                            &message);
+        for (int i = 0; i < 3; i++) {
+            dest_port->write_bz_message(buff, len);
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
+        }
+    }  
 }
 
 void ProtocolConversion::invalid_teleconrol_cmd(bz_message_uav_up_t bz_message)
@@ -806,6 +933,18 @@ void ProtocolConversion::init_px4()
 
         _flightModeInfoList.push_back(info);
     }
+}
+
+list<string> ProtocolConversion::flightModes()
+{
+    list<string> flightModes;
+
+    for (auto info = _flightModeInfoList.begin(); info != _flightModeInfoList.end(); ++info) {
+        if (info->canBeSet) {
+                flightModes.push_back(*(string*)info->name);
+            }
+    }
+    return flightModes;
 }
 
 string ProtocolConversion::flightMode(uint8_t base_mode, uint32_t custom_mode)
@@ -993,6 +1132,24 @@ void ProtocolConversion::uav_command_feedback(bz_message_ground_down_t *msg, uin
     return;
 }
 
+void ProtocolConversion::uav_route_download_feedback(bz_message_ground_down_t *msg, uint8_t sender_sysid, uint8_t receiver_sysid, route_download_reply_t feedback_data)
+{
+    memcpy((uint8_t*)&msg->pyload[0], (uint8_t*)&feedback_data.route_number, 63-9+1);
+
+    bz_finalize_message_encode(msg, BZ_GROUND_DOWNSTREAM_LEN, sender_sysid, receiver_sysid, ROUTE_DOWNLOAD_REPLY);
+
+    return;
+}
+
+void ProtocolConversion::uav_route_inquiry_feedback(bz_message_ground_down_t *msg, uint8_t sender_sysid, uint8_t receiver_sysid, route_inquiry_reply_t feedback_data)
+{
+    memcpy((uint8_t*)&msg->pyload[0], (uint8_t*)&feedback_data.route_number, 63-9+1);
+
+    bz_finalize_message_encode(msg, BZ_GROUND_DOWNSTREAM_LEN, sender_sysid, receiver_sysid, ROUTE_INQUIRY_REPLY);
+
+    return;
+}
+
 int ProtocolConversion::arm_disarm( bool flag )
 {
     uint8_t component_id = 0;
@@ -1024,4 +1181,77 @@ int ProtocolConversion::arm_disarm( bool flag )
 
 	// Done!
 	return len;
+}
+
+void ProtocolConversion::startMission(bz_message_uav_up_t bz_message)
+{
+    string flight_mode = "Mission";
+    if (setFlightModeAndValidate(bz_message, flight_mode)) {
+        arm_disarm(true);
+        // if (!armVehicleAndValidate()) {
+        //     printf("Unable to start mission: Vehicle rejected arming.");
+        // }
+    } else {
+            printf("Unable to start mission: Vehicle not changing to Mission flight mode.\n");
+    }
+}
+
+bool ProtocolConversion::setFlightModeAndValidate(bz_message_uav_up_t bz_message, const string& flight_mode)
+{
+    // if (flightMode(_base_mode, _custom_mode) == flight_mode) {
+    //     return true;
+    // }
+
+    bool flightModeChanged = true;
+    set_flight_mode(bz_message, flight_mode);
+
+    // // We try 3 times
+    // for (int retries=0; retries<3; retries++) {
+    //     set_flight_mode(bz_message, flight_mode);
+
+    //     // Wait for vehicle to return flight mode
+    //     for (int i=0; i<13; i++) {
+    //         if (flightMode(_base_mode, _custom_mode) == flight_mode) {
+    //             flightModeChanged = true;
+    //             break;
+    //         }
+    //         std::this_thread::sleep_for(std::chrono::microseconds(200));
+    //     }
+    //     if (flightModeChanged) {
+    //         break;
+    //     }
+    // }
+
+    return flightModeChanged;
+}
+
+bool ProtocolConversion::armVehicleAndValidate()
+{
+    if (armed()) {
+        return true;
+    }
+    
+    bool vehicleArmed = false;
+
+    // Only try arming the vehicle a single time. Doing retries on arming with a delay can lead to safety issues.
+    arm_disarm(true);
+
+    // Wait 1000 msecs for vehicle to arm
+    for (int i=0; i<10; i++) {
+        if (armed()) {
+            vehicleArmed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+
+    return vehicleArmed;
+}
+
+void ProtocolConversion::updateArmed(bool armed)
+{
+    if (_armed != armed) {
+        _armed = armed;
+        // We are transitioning to the armed state, begin tracking trajectory points for the map
+    }
 }
