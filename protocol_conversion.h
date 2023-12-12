@@ -97,6 +97,7 @@ public:
     void updateArmed(bool armed);
     void route_inquiry_reply();
     mavlink_mission_count_t mission_count;
+    void sendGCSHeartbeat(void);
 
 private:
     bool _armed = false;

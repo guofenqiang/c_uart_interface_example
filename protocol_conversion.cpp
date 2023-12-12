@@ -154,6 +154,7 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             _base_mode = heartbeat.base_mode;
             _custom_mode = heartbeat.custom_mode;
             bool newArmed = heartbeat.base_mode & MAV_MODE_FLAG_DECODE_POSITION_SAFETY;
+            sendGCSHeartbeat();
             updateArmed(newArmed);
             break;
         }
@@ -456,8 +457,6 @@ void ProtocolConversion::autonomous_takeoff(bz_message_uav_up_t bz_message)
     mavlink_message_t  msg;
     mavlink_command_int_t  cmd;
     autonomous_takeoff_t mode;
-    sender_sysid = bz_message.sender_sysid;
-    receiver_sysid = bz_message.receiver_sysid;
     arm_disarm(true);
 
     memcpy((uint8_t*)&mode.enable, (uint8_t*)&bz_message.pyload[0], sizeof(mode));
@@ -476,7 +475,7 @@ void ProtocolConversion::autonomous_takeoff(bz_message_uav_up_t bz_message)
         cmd.z = (float)mode.height / 10 + amsl_alt / 1000;
 
         mavlink_msg_command_int_encode_chan(bz_message.sender_sysid,
-                                            0,
+                                            1,
                                             0,
                                             &msg,
                                             &cmd);
@@ -1165,7 +1164,7 @@ int ProtocolConversion::arm_disarm( bool flag )
 
 	// Prepare command for off-board mode
 	mavlink_command_long_t com = { 0 };
-	com.target_system    = receiver_sysid;
+	com.target_system    = sender_sysid;
 	com.target_component = target_compnent;
 	com.command          = MAV_CMD_COMPONENT_ARM_DISARM;
 	com.confirmation     = true;
@@ -1254,4 +1253,21 @@ void ProtocolConversion::updateArmed(bool armed)
         _armed = armed;
         // We are transitioning to the armed state, begin tracking trajectory points for the map
     }
+}
+
+void ProtocolConversion::sendGCSHeartbeat(void)
+{
+    mavlink_message_t message;
+
+    mavlink_msg_heartbeat_pack_chan(receiver_sysid,
+                                    0,
+                                    0,
+                                    &message,
+                                    MAV_TYPE_GCS,            // MAV_TYPE
+                                    MAV_AUTOPILOT_INVALID,   // MAV_AUTOPILOT
+                                    MAV_MODE_MANUAL_ARMED,   // MAV_MODE
+                                    0,                       // custom mode
+                                    MAV_STATE_ACTIVE);       // MAV_STATE
+    
+    port->write_message(message);
 }

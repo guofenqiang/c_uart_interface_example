@@ -142,7 +142,7 @@ void UAV_Interface::platform_feedback()
 
 	_ptconv->uav_platform_feedback(&bz_message, 
 								   sysid, 
-								   10, 
+								   _ptconv->receiver_sysid, 
 								   _ptconv->feedback_data);
 	_ptconv->ground_down_t_to_qbyte(_ptconv->send_buff, 
 									&_ptconv->send_len,
