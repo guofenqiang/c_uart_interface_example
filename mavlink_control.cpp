@@ -447,7 +447,7 @@ quit_handler( int sig )
 int top1(int argc, char **argv)
 {
 	char uart_name1[] = "/dev/ttyUSB0"; //protocol <---> bz
-	int baudrate1 = 230400;
+	int baudrate1 = 115200;
 
 	char uart_name2[] = "/dev/ttyUSB1"; //protocol <---> uav
 	int baudrate2 = 57600;

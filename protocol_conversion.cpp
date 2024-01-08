@@ -390,6 +390,13 @@ void ProtocolConversion::handle_message(mavlink_message_t & message)
             feedback_data.relative_height = alt.altitude_relative * 10;
         } 
 
+        case MAVLINK_MSG_ID_STATUSTEXT: 
+        {
+            mavlink_statustext_t statustext;
+            mavlink_msg_statustext_decode(&message, &statustext);
+            printf("%s\n", statustext.text);
+        }
+
         default :
         {
             // printf("msgid: %d\n", message.msgid);
@@ -416,6 +423,11 @@ void ProtocolConversion::bz_telemetry_decode(char *buff, int len)
 void ProtocolConversion::virtual_rocker_mode(bz_message_uav_up_t bz_message)
 {
     printf("***************************************virtual_rocker_mode**************************************\n");
+
+    printf("current joystick no supported\n");
+    receiver_status = 0x02;
+    cmd_status = 0x02;
+    return;
 
     mavlink_message_t msg;
     manual_mode_t manual_mode;
@@ -520,7 +532,6 @@ void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_m
 
     printf("***************************************autonomous_flight_and_steering**************************************\n");
 
-    mavlink_message_t msg;
     autonomous_flight_t manual_mode;
 
     memcpy((uint8_t*)&manual_mode.act, (uint8_t*)&bz_message.pyload[0], sizeof(manual_mode));
@@ -533,6 +544,7 @@ void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_m
     int16_t newThrustCommand =    0;
 
     // set_flight_mode(bz_message, "Stabilized");
+    arm_disarm(true);
 
     if (manual_mode.act == 0x01) {
         newPitchCommand = manual_mode.virt_joy;
@@ -551,20 +563,11 @@ void ProtocolConversion::autonomous_flight_and_steering(bz_message_uav_up_t bz_m
     } else if (manual_mode.act == 0x08) {
         newYawCommand = manual_mode.virt_joy;
     }
-
-    mavlink_msg_manual_control_pack_chan(bz_message.sender_sysid,
-                                            0,
-                                            0,
-                                            &msg,
-                                            bz_message.receiver_sysid,
-                                            static_cast<int16_t>(newPitchCommand),
-                                            static_cast<int16_t>(newRollCommand),
-                                            static_cast<int16_t>(newThrustCommand),
-                                            static_cast<int16_t>(newYawCommand),
-                                            0);
-
-    dest_port->write_message(msg);
-    printf("%d, %d, %d, %d\n", newRollCommand, newPitchCommand, newYawCommand, newThrustCommand);
+    
+    _newRollCommand = newRollCommand;
+    _newPitchCommand =  newPitchCommand;
+    _newYawCommand =  newYawCommand;
+    _newThrustCommand =  newThrustCommand;
 
 }
 
@@ -1270,4 +1273,51 @@ void ProtocolConversion::sendGCSHeartbeat(void)
                                     MAV_STATE_ACTIVE);       // MAV_STATE
     
     port->write_message(message);
+}
+
+void ProtocolConversion::sendJoystickDataThreadSafe(void)
+{
+    mavlink_message_t msg;
+    static uint8_t count = 0;
+
+    mavlink_msg_manual_control_pack_chan(receiver_sysid,
+                                            0,
+                                            0,
+                                            &msg,
+                                            sender_sysid,
+                                            static_cast<int16_t>(_newPitchCommand),
+                                            static_cast<int16_t>(_newRollCommand),
+                                            static_cast<int16_t>(500),
+                                            static_cast<int16_t>(_newYawCommand),
+                                            0);
+
+    dest_port->write_message(msg);
+    // printf("%d, %d, %d, %d\n", _newPitchCommand, _newRollCommand, _newThrustCommand, _newYawCommand);
+    // show_timer();
+
+    if (count >= 25) {
+        count = 0;
+        _newRollCommand = 0;
+        _newPitchCommand =  0;
+        _newYawCommand =  0;
+        _newThrustCommand =  0;
+    }
+    if ((count == 0) && (_newRollCommand || _newPitchCommand || _newYawCommand || _newThrustCommand)) {
+        count = 1;
+    } else {
+        count++;
+    }
+}
+
+void ProtocolConversion::show_timer()
+{
+    time_t current_time;
+    struct tm* time_info;
+    char time_str[50];
+ 
+    time(&current_time);
+    time_info = localtime(&current_time);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", time_info);
+ 
+    printf("%s\n", time_str);
 }

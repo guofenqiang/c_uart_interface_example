@@ -39,6 +39,7 @@ public:
 	Timer timer;
 	void timer_handler();
 	void exec_feedback_handle();
+	void virtualTabletJoystickValue();
 	uint8_t _flag;
 	char rx_buff_last[1024];
 

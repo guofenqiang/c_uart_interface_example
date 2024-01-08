@@ -98,9 +98,15 @@ public:
     void route_inquiry_reply();
     mavlink_mission_count_t mission_count;
     void sendGCSHeartbeat(void);
+    void sendJoystickDataThreadSafe(void);
+    void show_timer();
 
 private:
     bool _armed = false;
+    int16_t _newRollCommand;
+    int16_t _newPitchCommand;
+    int16_t _newYawCommand;
+    int16_t _newThrustCommand;
 
 };
 

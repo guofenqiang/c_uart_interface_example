@@ -35,6 +35,9 @@ void UAV_Interface::start()
 
 
 	write_start();
+
+	// 定时发送摇杆信息
+	Init_Timer0();
 }
 
 void UAV_Interface::stop()
@@ -199,13 +202,19 @@ void UAV_Interface::timer_handler()
 {
 	static int count = 0;
 	_flag = 0;
-	// timer.start(1000000); //start 应该初始化一次，过多cpu会发烫
+	
+	if (protocol_mode == 1) {
+		return;
+	}
+
+	timer.start(1000000); //start 应该初始化一次，过多cpu会发烫
 	while (true) {
 		if (timer.wait()) {
-			// 执行定时任务
-			if (count >= 10) {
+			// 执行定时任务, 25Hz, same as real joystick rate
+			if (count >= 40) {
 				count = 0;
-				exec_feedback_handle();
+				// exec_feedback_handle();
+				virtualTabletJoystickValue();
 			}
 			count++;
 		}
@@ -228,4 +237,9 @@ void UAV_Interface::Init_Timer0()
 	pthread_create( &tid, NULL, exec_timer, this);
 
     return;
+}
+
+void UAV_Interface::virtualTabletJoystickValue()
+{
+	_ptconv->sendJoystickDataThreadSafe();
 }
